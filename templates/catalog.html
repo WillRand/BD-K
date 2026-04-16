@@ -5,138 +5,88 @@
 {% block content %}
 <h1 class="mb-4">🛒 Каталог товаров</h1>
 
-<!-- Фильтры и сортировка -->
-<div class="row mb-4">
+<!-- Форма фильтров (отправляет GET-запрос) -->
+<form method="GET" action="{{ url_for('catalog') }}" class="row mb-4">
     <div class="col-md-3">
         <label class="form-label">Категория</label>
-        <select id="categoryFilter" class="form-select">
+        <select name="category" class="form-select">
             <option value="">Все</option>
-            <option value="weapon">Оружие</option>
-            <option value="armor">Броня</option>
-            <option value="potion">Зелья</option>
-            <option value="cosmetic">Косметика</option>
+            <option value="weapon" {% if request.args.get('category') == 'weapon' %}selected{% endif %}>Оружие</option>
+            <option value="armor" {% if request.args.get('category') == 'armor' %}selected{% endif %}>Броня</option>
+            <option value="potion" {% if request.args.get('category') == 'potion' %}selected{% endif %}>Зелья</option>
+            <option value="cosmetic" {% if request.args.get('category') == 'cosmetic' %}selected{% endif %}>Косметика</option>
         </select>
     </div>
     <div class="col-md-3">
         <label class="form-label">Сортировка</label>
-        <select id="sortSelect" class="form-select">
-            <option value="name_ASC">По имени (А-Я)</option>
-            <option value="name_DESC">По имени (Я-А)</option>
-            <option value="price_ASC">Сначала дешёвые</option>
-            <option value="price_DESC">Сначала дорогие</option>
+        <select name="sort_by" class="form-select">
+            <option value="name" {% if request.args.get('sort_by') == 'name' or not request.args.get('sort_by') %}selected{% endif %}>По имени</option>
+            <option value="price" {% if request.args.get('sort_by') == 'price' %}selected{% endif %}>По цене</option>
         </select>
     </div>
-    <div class="col-md-3">
-        <label class="form-label">Поиск</label>
-        <input type="text" id="searchInput" class="form-control" placeholder="Название предмета...">
+    <div class="col-md-2">
+        <label class="form-label">Порядок</label>
+        <select name="order" class="form-select">
+            <option value="ASC" {% if request.args.get('order') == 'ASC' or not request.args.get('order') %}selected{% endif %}>По возрастанию</option>
+            <option value="DESC" {% if request.args.get('order') == 'DESC' %}selected{% endif %}>По убыванию</option>
+        </select>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
         <label class="form-label">Наличие</label>
-        <select id="stockFilter" class="form-select">
-            <option value="all">Все товары</option>
-            <option value="in_stock">Только в наличии</option>
-            <option value="out_stock">Ожидают поставку</option>
+        <select name="stock_filter" class="form-select">
+            <option value="all" {% if request.args.get('stock_filter') == 'all' or not request.args.get('stock_filter') %}selected{% endif %}>Все товары</option>
+            <option value="in_stock" {% if request.args.get('stock_filter') == 'in_stock' %}selected{% endif %}>Только в наличии</option>
+            <option value="out_stock" {% if request.args.get('stock_filter') == 'out_stock' %}selected{% endif %}>Ожидают поставку</option>
         </select>
     </div>
-</div>
+    <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Применить</button>
+        <a href="{{ url_for('catalog') }}" class="btn btn-secondary w-100 ms-2">Сбросить</a>
+    </div>
+</form>
 
 <!-- Сетка товаров -->
-<div class="row" id="itemsContainer">
-    {% for item in items %}
-    <div class="col-md-3 mb-4 item-card" 
-         data-name="{{ item.name.lower() }}"
-         data-category="{{ item.category }}"
-         data-price="{{ item.price }}"
-         data-stock="{{ item.stock }}">
-        <div class="card h-100 {% if item.stock == 0 %}opacity-75{% endif %}">
-            <div class="card-img-top text-center p-3 bg-light">
-                <span style="font-size: 4rem;">
-                    {% if item.category == 'weapon' %}⚔️
-                    {% elif item.category == 'armor' %}🛡️
-                    {% elif item.category == 'potion' %}🧪
-                    {% else %}✨
+<div class="row">
+    {% if items %}
+        {% for item in items %}
+        <div class="col-md-3 mb-4">
+            <div class="card h-100 {% if item.stock == 0 %}opacity-75{% endif %}">
+                <div class="card-img-top text-center p-3 bg-light">
+                    <span style="font-size: 4rem;">
+                        {% if item.category == 'weapon' %}⚔️
+                        {% elif item.category == 'armor' %}🛡️
+                        {% elif item.category == 'potion' %}🧪
+                        {% else %}✨
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title">{{ item.name }}</h5>
+                    <p class="card-text">{{ item.description[:80] }}</p>
+                    <p class="price">{{ item.price }} монет</p>
+                    
+                    {% if item.stock == 0 %}
+                        <p class="text-warning fw-bold">⏳ Ожидается поставка</p>
+                        <button class="btn btn-secondary w-100" disabled>Нет в наличии</button>
+                    {% else %}
+                        <p class="{% if item.stock <= 5 %}text-danger{% else %}text-success{% endif %}">
+                            📦 В наличии: {{ item.stock }} шт.
+                        </p>
+                        <form method="POST" action="{{ url_for('buy', item_id=item.id) }}" class="d-flex gap-2">
+                            <input type="number" name="quantity" value="1" min="1" max="{{ item.stock }}" class="form-control w-50">
+                            <button type="submit" class="btn btn-success flex-grow-1" {% if not current_user.is_authenticated %}disabled{% endif %}>
+                                Купить
+                            </button>
+                        </form>
                     {% endif %}
-                </span>
-            </div>
-            <div class="card-body">
-                <h5 class="card-title">{{ item.name }}</h5>
-                <p class="card-text">{{ item.description[:80] }}</p>
-                <p class="price">{{ item.price }} монет</p>
-                
-                {% if item.stock == 0 %}
-                    <p class="text-warning fw-bold">⏳ Ожидается поставка</p>
-                    <button class="btn btn-secondary w-100" disabled>Нет в наличии</button>
-                {% else %}
-                    <p class="{% if item.stock <= 5 %}stock-low{% else %}stock-normal{% endif %}">
-                        📦 В наличии: {{ item.stock }} шт.
-                    </p>
-                    <form method="POST" action="{{ url_for('buy', item_id=item.id) }}" class="d-flex gap-2">
-                        <input type="number" name="quantity" value="1" min="1" max="{{ item.stock }}" class="form-control w-50">
-                        <button type="submit" class="btn btn-success flex-grow-1" {% if not current_user.is_authenticated %}disabled{% endif %}>
-                            Купить
-                        </button>
-                    </form>
-                {% endif %}
+                </div>
             </div>
         </div>
-    </div>
-    {% endfor %}
+        {% endfor %}
+    {% else %}
+        <div class="col-12">
+            <div class="alert alert-info text-center">🔍 Ничего не найдено</div>
+        </div>
+    {% endif %}
 </div>
-
-<script>
-    const filterCategory = document.getElementById('categoryFilter');
-    const sortSelect = document.getElementById('sortSelect');
-    const searchInput = document.getElementById('searchInput');
-    const stockFilter = document.getElementById('stockFilter');
-    const itemsContainer = document.getElementById('itemsContainer');
-    
-    function applyFiltersAndSort() {
-        const allCards = Array.from(document.querySelectorAll('.item-card'));
-        const category = filterCategory.value;
-        const search = searchInput.value.toLowerCase().trim();
-        const stockOption = stockFilter.value;
-        
-        // Фильтрация
-        const visibleCards = allCards.filter(card => {
-            if (category && card.dataset.category !== category) return false;
-            if (search && !card.dataset.name.includes(search)) return false;
-            
-            const stock = parseInt(card.dataset.stock);
-            if (stockOption === 'in_stock' && stock === 0) return false;
-            if (stockOption === 'out_stock' && stock > 0) return false;
-            
-            return true;
-        });
-        
-        // Сортировка
-        const [sortBy, order] = sortSelect.value.split('_');
-        visibleCards.sort((a, b) => {
-            let valA, valB;
-            if (sortBy === 'name') {
-                valA = a.dataset.name;
-                valB = b.dataset.name;
-                return order === 'ASC' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-            } else {
-                valA = parseInt(a.dataset.price);
-                valB = parseInt(b.dataset.price);
-                return order === 'ASC' ? valA - valB : valB - valA;
-            }
-        });
-        
-        // Обновление контейнера
-        itemsContainer.innerHTML = '';
-        
-        if (visibleCards.length === 0) {
-            itemsContainer.innerHTML = '<div class="col-12"><div class="alert alert-info text-center">🔍 Ничего не найдено</div></div>';
-        } else {
-            visibleCards.forEach(card => itemsContainer.appendChild(card));
-        }
-    }
-    
-    filterCategory.addEventListener('change', applyFiltersAndSort);
-    sortSelect.addEventListener('change', applyFiltersAndSort);
-    searchInput.addEventListener('input', applyFiltersAndSort);
-    stockFilter.addEventListener('change', applyFiltersAndSort);
-    document.addEventListener('DOMContentLoaded', applyFiltersAndSort);
-</script>
 {% endblock %}

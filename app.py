@@ -120,12 +120,26 @@ def logout():
 @app.route('/')
 @app.route('/catalog')
 def catalog():
-    category = request.args.get('category')
+    # Получаем параметры из URL
+    category = request.args.get('category', '')
     sort_by = request.args.get('sort_by', 'name')
     order = request.args.get('order', 'ASC')
+    stock_filter = request.args.get('stock_filter', 'all')
     
-    # Показываем ВСЕ товары, даже с нулевым запасом
-    items = get_all_items(category=category, sort_by=sort_by, order=order, show_out_of_stock=True)
+    # Получаем все товары
+    all_items = get_all_items(category=category if category else None, 
+                               sort_by=sort_by, 
+                               order=order, 
+                               show_out_of_stock=True)
+    
+    # Фильтруем по наличию (если нужно)
+    if stock_filter == 'in_stock':
+        items = [item for item in all_items if item['stock'] > 0]
+    elif stock_filter == 'out_stock':
+        items = [item for item in all_items if item['stock'] == 0]
+    else:
+        items = all_items
+    
     return render_template('catalog.html', items=items)
 
 # ============ ПОКУПКА ============
