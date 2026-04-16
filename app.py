@@ -206,5 +206,22 @@ def admin_delete_item(item_id):
     
     return redirect(url_for('admin_panel'))
 
+# ============ ПРОДАЖА ============
+
+@app.route('/sell/<int:item_id>', methods=['POST'])
+@login_required
+def sell(item_id):
+    quantity = int(request.form.get('quantity', 1))
+    
+    from db import sell_item
+    success, message = sell_item(current_user.id, item_id, quantity)
+    
+    if success:
+        flash(message, 'success')
+    else:
+        flash(message, 'danger')
+    
+    return redirect(url_for('inventory'))
+
 if __name__ == '__main__':
     app.run(debug=True)

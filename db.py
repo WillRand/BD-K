@@ -150,11 +150,11 @@ def get_all_items(category=None, sort_by=None, order='ASC'):
     if not conn:
         return []
     
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(dictionary=True)  # <-- ВАЖНО: dictionary=True
     query = "SELECT * FROM items WHERE stock > 0"
     params = []
     
-    if category:
+    if category and category != '':
         query += " AND category = %s"
         params.append(category)
     
@@ -173,7 +173,7 @@ def get_item_by_id(item_id):
     if not conn:
         return None
     
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(dictionary=True)  # <-- ВАЖНО: dictionary=True
     cursor.execute("SELECT * FROM items WHERE id = %s", (item_id,))
     item = cursor.fetchone()
     cursor.close()
@@ -192,11 +192,11 @@ def purchase_item(user_id, item_id, quantity=1):
     if not conn:
         return False, "Ошибка подключения к БД"
     
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(dictionary=True)  # <-- ВАЖНО: dictionary=True
     
     try:
         # 1. Получаем информацию о предмете
-        cursor.execute("SELECT price, stock FROM items WHERE id = %s", (item_id,))
+        cursor.execute("SELECT id, name, price, stock FROM items WHERE id = %s", (item_id,))
         item = cursor.fetchone()
         
         if not item:
@@ -208,6 +208,9 @@ def purchase_item(user_id, item_id, quantity=1):
         # 2. Получаем баланс пользователя
         cursor.execute("SELECT balance FROM users WHERE id = %s", (user_id,))
         user = cursor.fetchone()
+        
+        if not user:
+            return False, "Пользователь не найден"
         
         total_cost = item['price'] * quantity
         if user['balance'] < total_cost:
@@ -241,7 +244,7 @@ def purchase_item(user_id, item_id, quantity=1):
     finally:
         cursor.close()
         conn.close()
-
+        
 def sell_item(user_id, item_id, quantity=1):
     """
     Продажа предмета обратно в магазин.
@@ -254,7 +257,7 @@ def sell_item(user_id, item_id, quantity=1):
     if not conn:
         return False, "Ошибка подключения к БД"
     
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(dictionary=True)  # <-- ВАЖНО: dictionary=True
     
     try:
         # 1. Проверяем, есть ли предмет в инвентаре пользователя
@@ -268,8 +271,11 @@ def sell_item(user_id, item_id, quantity=1):
             return False, f"У вас нет такого предмета в нужном количестве"
         
         # 2. Получаем цену предмета (продажа за 50% от цены покупки)
-        cursor.execute("SELECT name, price FROM items WHERE id = %s", (item_id,))
+        cursor.execute("SELECT id, name, price FROM items WHERE id = %s", (item_id,))
         item = cursor.fetchone()
+        
+        if not item:
+            return False, "Предмет не найден"
         
         sell_price = item['price'] // 2  # Продажа за половину цены
         total_refund = sell_price * quantity
@@ -311,7 +317,7 @@ def get_user_inventory(user_id):
     if not conn:
         return []
     
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(dictionary=True)  # <-- ВАЖНО: dictionary=True
     cursor.execute('''
         SELECT i.*, inv.quantity, inv.purchased_at
         FROM inventory inv
@@ -323,7 +329,7 @@ def get_user_inventory(user_id):
     cursor.close()
     conn.close()
     return items
-
+    
 def get_user_balance(user_id):
     """Получить баланс пользователя"""
     conn = get_connection()
