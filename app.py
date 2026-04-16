@@ -15,7 +15,8 @@ from db import (
     get_all_users_inventory, update_item_stock_moderator, assign_moderator_role,
     is_moderator_or_admin, get_all_users_for_moderator, get_user_inventory_readonly,
     get_popular_items, get_category_stats, get_sales_dynamics, 
-    get_market_price_history_advanced, get_total_stats
+    get_market_price_history_advanced, get_total_stats,
+    spin_wheel, hunt_monster, open_chest, get_game_stats
 )
 
 app = Flask(__name__)
@@ -658,6 +659,56 @@ def api_total_stats():
     stats = get_total_stats(period)
     return jsonify(stats)
 
+# ============ ИГРОВЫЕ МЕХАНИКИ ============
+
+@app.route('/game')
+@login_required
+def game():
+    stats = get_game_stats(current_user.id)
+    return render_template('game.html', stats=stats)
+
+@app.route('/game/spin_wheel', methods=['POST'])
+@login_required
+def game_spin_wheel():
+    success, message, new_balance, item_id = spin_wheel(current_user.id)
+    
+    if success:
+        flash(message, 'success')
+        if new_balance:
+            current_user.balance = new_balance
+    else:
+        flash(message, 'danger')
+    
+    return redirect(url_for('game'))
+
+@app.route('/game/hunt', methods=['POST'])
+@login_required
+def game_hunt():
+    success, message, new_balance = hunt_monster(current_user.id)
+    
+    if success:
+        flash(message, 'success' if 'Победа' in message else 'warning')
+        if new_balance:
+            current_user.balance = new_balance
+    else:
+        flash(message, 'danger')
+    
+    return redirect(url_for('game'))
+
+@app.route('/game/open_chest', methods=['POST'])
+@login_required
+def game_open_chest():
+    success, message, new_balance, item_id = open_chest(current_user.id)
+    
+    if success:
+        flash(message, 'success')
+        if new_balance:
+            current_user.balance = new_balance
+    else:
+        flash(message, 'danger')
+    
+    return redirect(url_for('game'))
+    
 # ===============================================================================
 
 if __name__ == '__main__':

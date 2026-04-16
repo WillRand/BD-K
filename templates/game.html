@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Игровая площадка{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">🎮 Игровая площадка</h1>
+
+<div class="row">
+    <!-- Колесо удачи -->
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-warning text-dark">
+                <h4 class="mb-0">🎡 Колесо удачи</h4>
+            </div>
+            <div class="card-body text-center">
+                <span style="font-size: 5rem;">🎡</span>
+                <p class="mt-3">Ежедневное бесплатное вращение!</p>
+                <p class="text-muted">Можно выиграть монеты или предметы</p>
+                <form method="POST" action="{{ url_for('game_spin_wheel') }}">
+                    <button type="submit" class="btn btn-warning btn-lg w-100">
+                        🎲 Крутить колесо
+                    </button>
+                </form>
+                <small class="text-muted">Доступно 1 раз в день</small>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Охота на монстра -->
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-danger text-white">
+                <h4 class="mb-0">⚔️ Охота на монстра</h4>
+            </div>
+            <div class="card-body text-center">
+                <span style="font-size: 5rem;">🐉</span>
+                <p class="mt-3">Рискованное сражение!</p>
+                <p class="text-muted">Победа: +100-200 монет</p>
+                <p class="text-muted">Поражение: -100-200 монет</p>
+                <form method="POST" action="{{ url_for('game_hunt') }}">
+                    <button type="submit" class="btn btn-danger btn-lg w-100">
+                        ⚔️ Охотиться
+                    </button>
+                </form>
+                <small class="text-muted">Рискните! Кто не рискует, тот не пьёт шампанское</small>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Сундук с сокровищами -->
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-success text-white">
+                <h4 class="mb-0">🎁 Сундук с сокровищами</h4>
+            </div>
+            <div class="card-body text-center">
+                <span style="font-size: 5rem;">🎁</span>
+                <p class="mt-3">Стоимость: 100 монет</p>
+                <p class="text-muted">Можно выиграть монеты (50-300) или редкие предметы!</p>
+                <form method="POST" action="{{ url_for('game_open_chest') }}">
+                    <button type="submit" class="btn btn-success btn-lg w-100">
+                        🔑 Открыть сундук
+                    </button>
+                </form>
+                <small class="text-muted">Что внутри? Тайна...</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Статистика -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h5>📊 Ваша игровая статистика</h5>
+    </div>
+    <div class="card-body">
+        <div class="row text-center">
+            <div class="col-md-3">
+                <h3>{{ stats.wheel_spins or 0 }}</h3>
+                <p>Вращений колеса</p>
+            </div>
+            <div class="col-md-3">
+                <h3 class="text-success">{{ stats.hunt_wins or 0 }}</h3>
+                <p>Побед в охоте</p>
+            </div>
+            <div class="col-md-3">
+                <h3 class="text-danger">{{ stats.hunt_losses or 0 }}</h3>
+                <p>Поражений в охоте</p>
+            </div>
+            <div class="col-md-3">
+                <h3>{{ stats.chests_opened or 0 }}</h3>
+                <p>Открытых сундуков</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="mt-3">
+    <a href="{{ url_for('catalog') }}" class="btn btn-secondary">← Назад в магазин</a>
+</div>
+{% endblock %}

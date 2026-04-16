@@ -1,5 +1,6 @@
 import mysql.connector
 from mysql.connector import Error
+import random
 
 # Настройки подключения к БД
 config = {
@@ -27,6 +28,20 @@ def init_db():
     
     cursor = conn.cursor()
     
+    # Таблица для статистики игровых действий
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS game_stats (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            action_type VARCHAR(50) NOT NULL,  -- 'wheel', 'hunt', 'chest'
+            result VARCHAR(50),                 -- 'win', 'lose'
+            reward_type VARCHAR(50),            -- 'coins', 'item'
+            reward_value INT,                   -- количество монет или ID предмета
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    ''')
+
     # Таблица пользователей
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
@@ -1596,6 +1611,276 @@ def add_test_transactions():
     
     cursor.close()
     conn.close()
+
+
+# ============ ИГРОВЫЕ МЕХАНИКИ ============
+
+# Конфигурация наград
+WHEEL_REWARDS = [
+    {'type': 'coins', 'value': 10, 'chance': 30},   # 30% - 10 монет
+    {'type': 'coins', 'value': 50, 'chance': 20},   # 20% - 50 монет
+    {'type': 'coins', 'value': 100, 'chance': 10},  # 10% - 100 монет
+    {'type': 'coins', 'value': 500, 'chance': 2},   # 2% - 500 монет
+    {'type': 'item', 'item_id': 1, 'chance': 10},   # 10% - Меч огня
+    {'type': 'item', 'item_id': 2, 'chance': 10},   # 10% - Железный щит
+    {'type': 'item', 'item_id': 3, 'chance': 15},   # 15% - Зелье здоровья
+    {'type': 'nothing', 'value': 0, 'chance': 3},   # 3% - ничего
+]
+
+HUNT_OUTCOMES = [
+    {'result': 'win', 'coins': 200, 'chance': 40},   # 40% - победа +200
+    {'result': 'win', 'coins': 100, 'chance': 30},   # 30% - победа +100
+    {'result': 'lose', 'coins': -100, 'chance': 20}, # 20% - поражение -100
+    {'result': 'lose', 'coins': -200, 'chance': 10}, # 10% - поражение -200
+]
+
+CHEST_REWARDS = [
+    {'type': 'coins', 'value': 150, 'chance': 30},
+    {'type': 'coins', 'value': 300, 'chance': 20},
+    {'type': 'coins', 'value': 50, 'chance': 25},
+    {'type': 'item', 'item_id': 1, 'chance': 8},
+    {'type': 'item', 'item_id': 2, 'chance': 8},
+    {'type': 'item', 'item_id': 4, 'chance': 5},  # Плащ невидимости
+    {'type': 'nothing', 'value': 0, 'chance': 4},
+]
+
+def spin_wheel(user_id):
+    """Колесо удачи - ежедневное бесплатное вращение"""
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения", 0, None
+    
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        # Проверяем, крутил ли пользователь сегодня
+        cursor.execute('''
+            SELECT COUNT(*) as count FROM game_stats 
+            WHERE user_id = %s AND action_type = 'wheel' 
+            AND DATE(created_at) = CURDATE()
+        ''', (user_id,))
+        result = cursor.fetchone()
+        
+        if result['count'] > 0:
+            return False, "Вы уже крутили колесо сегодня! Приходите завтра.", 0, None
+        
+        # Выбираем награду
+        total_chance = sum(r['chance'] for r in WHEEL_REWARDS)
+        rand = random.randint(1, total_chance)
+        cumulative = 0
+        reward = None
+        
+        for r in WHEEL_REWARDS:
+            cumulative += r['chance']
+            if rand <= cumulative:
+                reward = r
+                break
+        
+        message = ""
+        reward_value = 0
+        item_id = None
+        
+        if reward['type'] == 'coins':
+            # Добавляем монеты
+            cursor.execute("UPDATE users SET balance = balance + %s WHERE id = %s", (reward['value'], user_id))
+            message = f"🎉 Поздравляем! Вы выиграли {reward['value']} монет!"
+            reward_value = reward['value']
+            
+        elif reward['type'] == 'item':
+            # Добавляем предмет в инвентарь
+            cursor.execute('''
+                INSERT INTO inventory (user_id, item_id, quantity)
+                VALUES (%s, %s, 1)
+                ON DUPLICATE KEY UPDATE quantity = quantity + 1
+            ''', (user_id, reward['item_id']))
+            
+            cursor.execute("SELECT name FROM items WHERE id = %s", (reward['item_id'],))
+            item = cursor.fetchone()
+            message = f"🎁 Поздравляем! Вы выиграли предмет: {item['name']}!"
+            reward_value = reward['item_id']
+            item_id = reward['item_id']
+            
+        else:
+            message = "😢 К сожалению, ничего не выпало. Попробуйте в следующий раз!"
+        
+        # Записываем статистику
+        cursor.execute('''
+            INSERT INTO game_stats (user_id, action_type, result, reward_type, reward_value)
+            VALUES (%s, 'wheel', 'win', %s, %s)
+        ''', (user_id, reward['type'], reward_value if reward['type'] == 'coins' else reward_value))
+        
+        conn.commit()
+        
+        # Обновляем баланс в current_user (для отображения)
+        cursor.execute("SELECT balance FROM users WHERE id = %s", (user_id,))
+        new_balance = cursor.fetchone()
+        
+        return True, message, new_balance['balance'], item_id
+        
+    except Error as e:
+        conn.rollback()
+        return False, f"Ошибка: {e}", 0, None
+    finally:
+        cursor.close()
+        conn.close()
+
+def hunt_monster(user_id):
+    """Охота на монстра - рискованное сражение"""
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения", 0
+    
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        # Выбираем исход
+        total_chance = sum(h['chance'] for h in HUNT_OUTCOMES)
+        rand = random.randint(1, total_chance)
+        cumulative = 0
+        outcome = None
+        
+        for h in HUNT_OUTCOMES:
+            cumulative += h['chance']
+            if rand <= cumulative:
+                outcome = h
+                break
+        
+        # Проверяем, хватит ли монет при проигрыше
+        cursor.execute("SELECT balance FROM users WHERE id = %s", (user_id,))
+        user = cursor.fetchone()
+        
+        if outcome['coins'] < 0 and user['balance'] < abs(outcome['coins']):
+            return False, "😢 У вас недостаточно монет для охоты! Пополните баланс.", user['balance']
+        
+        # Обновляем баланс
+        new_balance = user['balance'] + outcome['coins']
+        cursor.execute("UPDATE users SET balance = %s WHERE id = %s", (new_balance, user_id))
+        
+        # Записываем статистику
+        cursor.execute('''
+            INSERT INTO game_stats (user_id, action_type, result, reward_type, reward_value)
+            VALUES (%s, 'hunt', %s, 'coins', %s)
+        ''', (user_id, outcome['result'], outcome['coins']))
+        
+        conn.commit()
+        
+        if outcome['result'] == 'win':
+            message = f"⚔️ Победа! Вы убили монстра и получили {outcome['coins']} монет!"
+        else:
+            message = f"💀 Поражение! Монстр оказался сильнее. Вы потеряли {abs(outcome['coins'])} монет."
+        
+        return True, message, new_balance
+        
+    except Error as e:
+        conn.rollback()
+        return False, f"Ошибка: {e}", 0
+    finally:
+        cursor.close()
+        conn.close()
+
+def open_chest(user_id):
+    """Сундук с сокровищами - стоит 100 монет"""
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения", 0, None
+    
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        # Проверяем баланс
+        cursor.execute("SELECT balance FROM users WHERE id = %s", (user_id,))
+        user = cursor.fetchone()
+        
+        if user['balance'] < 100:
+            return False, "😢 Недостаточно монет! Сундук стоит 100 монет.", user['balance'], None
+        
+        # Списываем 100 монет
+        cursor.execute("UPDATE users SET balance = balance - 100 WHERE id = %s", (user_id,))
+        
+        # Выбираем награду
+        total_chance = sum(c['chance'] for c in CHEST_REWARDS)
+        rand = random.randint(1, total_chance)
+        cumulative = 0
+        reward = None
+        
+        for c in CHEST_REWARDS:
+            cumulative += c['chance']
+            if rand <= cumulative:
+                reward = c
+                break
+        
+        message = ""
+        reward_value = 0
+        item_id = None
+        new_balance = user['balance'] - 100
+        
+        if reward['type'] == 'coins':
+            # Добавляем монеты
+            cursor.execute("UPDATE users SET balance = balance + %s WHERE id = %s", (reward['value'], user_id))
+            new_balance = user['balance'] - 100 + reward['value']
+            message = f"💰 Вы открыли сундук и нашли {reward['value']} монет!"
+            reward_value = reward['value']
+            
+        elif reward['type'] == 'item':
+            # Добавляем предмет
+            cursor.execute('''
+                INSERT INTO inventory (user_id, item_id, quantity)
+                VALUES (%s, %s, 1)
+                ON DUPLICATE KEY UPDATE quantity = quantity + 1
+            ''', (user_id, reward['item_id']))
+            
+            cursor.execute("SELECT name FROM items WHERE id = %s", (reward['item_id'],))
+            item = cursor.fetchone()
+            message = f"✨ Вы открыли сундук и нашли предмет: {item['name']}!"
+            reward_value = reward['item_id']
+            item_id = reward['item_id']
+            
+        else:
+            message = "😢 Сундук оказался пустым... В следующий раз повезёт!"
+        
+        # Записываем статистику
+        cursor.execute('''
+            INSERT INTO game_stats (user_id, action_type, result, reward_type, reward_value)
+            VALUES (%s, 'chest', 'win', %s, %s)
+        ''', (user_id, reward['type'], reward_value if reward['type'] == 'coins' else reward_value))
+        
+        conn.commit()
+        
+        cursor.execute("SELECT balance FROM users WHERE id = %s", (user_id,))
+        final_balance = cursor.fetchone()
+        
+        return True, message, final_balance['balance'], item_id
+        
+    except Error as e:
+        conn.rollback()
+        return False, f"Ошибка: {e}", 0, None
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_game_stats(user_id):
+    """Получить игровую статистику пользователя"""
+    conn = get_connection()
+    if not conn:
+        return {}
+    
+    cursor = conn.cursor(dictionary=True)
+    
+    cursor.execute('''
+        SELECT 
+            SUM(CASE WHEN action_type = 'wheel' THEN 1 ELSE 0 END) as wheel_spins,
+            SUM(CASE WHEN action_type = 'hunt' AND result = 'win' THEN 1 ELSE 0 END) as hunt_wins,
+            SUM(CASE WHEN action_type = 'hunt' AND result = 'lose' THEN 1 ELSE 0 END) as hunt_losses,
+            SUM(CASE WHEN action_type = 'chest' THEN 1 ELSE 0 END) as chests_opened
+        FROM game_stats
+        WHERE user_id = %s
+    ''', (user_id,))
+    stats = cursor.fetchone()
+    
+    cursor.close()
+    conn.close()
+    
+    return stats or {}
 
 # ============ ЗАПУСК СОЗДАНИЯ ТАБЛИЦ ============
 
