@@ -13,7 +13,9 @@ from db import (
     get_all_items_list, update_item_full, get_item_full, create_user_admin, update_user_admin,
     delete_user_admin, get_all_tables, get_table_data, get_table_schema,
     get_all_users_inventory, update_item_stock_moderator, assign_moderator_role,
-    is_moderator_or_admin, get_all_users_for_moderator, get_user_inventory_readonly
+    is_moderator_or_admin, get_all_users_for_moderator, get_user_inventory_readonly,
+    get_popular_items, get_category_stats, get_sales_dynamics, 
+    get_market_price_history_advanced, get_total_stats
 )
 
 app = Flask(__name__)
@@ -411,11 +413,11 @@ def transactions():
 
 # ============ ГРАФИКИ ЦЕН ============
 
-@app.route('/analytics')
-@login_required
-def analytics():
-    items = get_all_items_list()
-    return render_template('analytics.html', items=items)
+# @app.route('/analytics')
+# @login_required
+# def analytics():
+#     items = get_all_items_list()
+#     return render_template('analytics.html', items=items)
 
 @app.route('/api/price_history/<int:item_id>')
 @login_required
@@ -613,6 +615,48 @@ def moderator_user_inventory(user_id):
     inventory = get_user_inventory_readonly(user_id)
     return render_template('moderator_user_inventory.html', user=user, inventory=inventory)
 
+# ============ РАСШИРЕННАЯ АНАЛИТИКА ============
+
+@app.route('/analytics')
+@login_required
+def analytics():
+    items = get_all_items_list()
+    return render_template('analytics.html', items=items)
+
+@app.route('/api/popular_items')
+@login_required
+def api_popular_items():
+    period = request.args.get('period', 'all')
+    items = get_popular_items(period, 10)
+    return jsonify(items)
+
+@app.route('/api/category_stats')
+@login_required
+def api_category_stats():
+    period = request.args.get('period', 'all')
+    stats = get_category_stats(period)
+    return jsonify(stats)
+
+@app.route('/api/sales_dynamics')
+@login_required
+def api_sales_dynamics():
+    period = request.args.get('period', 'week')
+    data = get_sales_dynamics(period)
+    return jsonify(data)
+
+@app.route('/api/market_price_history_advanced/<int:item_id>')
+@login_required
+def api_market_price_history_advanced(item_id):
+    period = request.args.get('period', 'week')
+    data = get_market_price_history_advanced(item_id, period)
+    return jsonify(data)
+
+@app.route('/api/total_stats')
+@login_required
+def api_total_stats():
+    period = request.args.get('period', 'all')
+    stats = get_total_stats(period)
+    return jsonify(stats)
 
 # ===============================================================================
 

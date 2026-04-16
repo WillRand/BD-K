@@ -1303,6 +1303,299 @@ def get_user_inventory_readonly(user_id):
     conn.close()
     return items
 
+# ============ РАСШИРЕННАЯ АНАЛИТИКА ============
+
+def get_popular_items(period='all', limit=10):
+    """
+    Получить самые покупаемые предметы за период
+    period: 'day', 'week', 'month', 'year', 'all'
+    """
+    conn = get_connection()
+    if not conn:
+        return []
+    
+    cursor = conn.cursor(dictionary=True)
+    
+    # Определяем интервал
+    interval = ""
+    if period == 'day':
+        interval = "AND transaction_date >= DATE_SUB(NOW(), INTERVAL 1 DAY)"
+    elif period == 'week':
+        interval = "AND transaction_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)"
+    elif period == 'month':
+        interval = "AND transaction_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)"
+    elif period == 'year':
+        interval = "AND transaction_date >= DATE_SUB(NOW(), INTERVAL 365 DAY)"
+    
+    query = f'''
+        SELECT i.id, i.name, i.category, SUM(t.quantity) as total_sold
+        FROM transactions t
+        JOIN items i ON t.item_id = i.id
+        WHERE t.transaction_type = 'purchase'
+        {interval}
+        GROUP BY i.id, i.name, i.category
+        ORDER BY total_sold DESC
+        LIMIT %s
+    '''
+    
+    cursor.execute(query, (limit,))
+    items = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return items
+
+def get_category_stats(period='all'):
+    """Статистика покупок по категориям за период"""
+    conn = get_connection()
+    if not conn:
+        return []
+    
+    cursor = conn.cursor(dictionary=True)
+    
+    interval = ""
+    if period == 'day':
+        interval = "AND transaction_date >= DATE_SUB(NOW(), INTERVAL 1 DAY)"
+    elif period == 'week':
+        interval = "AND transaction_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)"
+    elif period == 'month':
+        interval = "AND transaction_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)"
+    elif period == 'year':
+        interval = "AND transaction_date >= DATE_SUB(NOW(), INTERVAL 365 DAY)"
+    
+    query = f'''
+        SELECT i.category, SUM(t.quantity) as total_sold
+        FROM transactions t
+        JOIN items i ON t.item_id = i.id
+        WHERE t.transaction_type = 'purchase'
+        {interval}
+        GROUP BY i.category
+        ORDER BY total_sold DESC
+    '''
+    
+    cursor.execute(query)
+    stats = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return stats
+
+def get_sales_dynamics(period='week'):
+    """Динамика продаж по дням/месяцам"""
+    conn = get_connection()
+    if not conn:
+        return []
+    
+    cursor = conn.cursor(dictionary=True)
+    
+    if period == 'day':
+        # Последние 24 часа с группировкой по часам
+        query = '''
+            SELECT 
+                DATE_FORMAT(transaction_date, '%Y-%m-%d %H:00') as date,
+                COUNT(*) as sales_count,
+                SUM(total_amount) as total_amount
+            FROM transactions
+            WHERE transaction_type = 'purchase'
+                AND transaction_date >= DATE_SUB(NOW(), INTERVAL 1 DAY)
+            GROUP BY DATE_FORMAT(transaction_date, '%Y-%m-%d %H:00')
+            ORDER BY date ASC
+        '''
+    elif period == 'week':
+        # Последние 7 дней с группировкой по дням
+        query = '''
+            SELECT 
+                DATE(transaction_date) as date,
+                COUNT(*) as sales_count,
+                SUM(total_amount) as total_amount
+            FROM transactions
+            WHERE transaction_type = 'purchase'
+                AND transaction_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            GROUP BY DATE(transaction_date)
+            ORDER BY date ASC
+        '''
+    elif period == 'month':
+        # Последние 30 дней с группировкой по дням
+        query = '''
+            SELECT 
+                DATE(transaction_date) as date,
+                COUNT(*) as sales_count,
+                SUM(total_amount) as total_amount
+            FROM transactions
+            WHERE transaction_type = 'purchase'
+                AND transaction_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            GROUP BY DATE(transaction_date)
+            ORDER BY date ASC
+        '''
+    else:  # year
+        # Последние 12 месяцев с группировкой по месяцам
+        query = '''
+            SELECT 
+                DATE_FORMAT(transaction_date, '%Y-%m') as date,
+                COUNT(*) as sales_count,
+                SUM(total_amount) as total_amount
+            FROM transactions
+            WHERE transaction_type = 'purchase'
+                AND transaction_date >= DATE_SUB(NOW(), INTERVAL 365 DAY)
+            GROUP BY DATE_FORMAT(transaction_date, '%Y-%m')
+            ORDER BY date ASC
+        '''
+    
+    cursor.execute(query)
+    data = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return data
+
+def get_market_price_history_advanced(item_id, period='week'):
+    """
+    Получить историю цен рынка с разной детализацией
+    period: 'day' (15 мин), 'week' (день), 'month' (день), 'year' (месяц)
+    """
+    conn = get_connection()
+    if not conn:
+        return []
+    
+    cursor = conn.cursor(dictionary=True)
+    
+    if period == 'day':
+        # За последние 24 часа с группировкой по 15 минут
+        query = '''
+            SELECT 
+                DATE_FORMAT(transaction_date, '%%Y-%%m-%%d %%H:%%i:00') as date,
+                AVG(price_per_unit) as avg_price,
+                MIN(price_per_unit) as min_price,
+                MAX(price_per_unit) as max_price,
+                SUM(quantity) as total_sold
+            FROM player_transactions
+            WHERE item_id = %s 
+                AND transaction_date >= DATE_SUB(NOW(), INTERVAL 1 DAY)
+            GROUP BY UNIX_TIMESTAMP(transaction_date) DIV 900
+            ORDER BY transaction_date ASC
+        '''
+    elif period == 'week':
+        # За последние 7 дней с группировкой по дням
+        query = '''
+            SELECT 
+                DATE(transaction_date) as date,
+                AVG(price_per_unit) as avg_price,
+                MIN(price_per_unit) as min_price,
+                MAX(price_per_unit) as max_price,
+                SUM(quantity) as total_sold
+            FROM player_transactions
+            WHERE item_id = %s 
+                AND transaction_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            GROUP BY DATE(transaction_date)
+            ORDER BY date ASC
+        '''
+    elif period == 'month':
+        # За последние 30 дней с группировкой по дням
+        query = '''
+            SELECT 
+                DATE(transaction_date) as date,
+                AVG(price_per_unit) as avg_price,
+                MIN(price_per_unit) as min_price,
+                MAX(price_per_unit) as max_price,
+                SUM(quantity) as total_sold
+            FROM player_transactions
+            WHERE item_id = %s 
+                AND transaction_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            GROUP BY DATE(transaction_date)
+            ORDER BY date ASC
+        '''
+    else:  # year
+        # За последние 12 месяцев с группировкой по месяцам
+        query = '''
+            SELECT 
+                DATE_FORMAT(transaction_date, '%%Y-%%m') as date,
+                AVG(price_per_unit) as avg_price,
+                MIN(price_per_unit) as min_price,
+                MAX(price_per_unit) as max_price,
+                SUM(quantity) as total_sold
+            FROM player_transactions
+            WHERE item_id = %s 
+                AND transaction_date >= DATE_SUB(NOW(), INTERVAL 365 DAY)
+            GROUP BY DATE_FORMAT(transaction_date, '%%Y-%%m')
+            ORDER BY date ASC
+        '''
+    
+    cursor.execute(query, (item_id,))
+    data = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return data
+
+def get_total_stats(period='all'):
+    """Получить общую статистику за период"""
+    conn = get_connection()
+    if not conn:
+        return {}
+    
+    cursor = conn.cursor(dictionary=True)
+    
+    interval = ""
+    if period == 'day':
+        interval = "AND transaction_date >= DATE_SUB(NOW(), INTERVAL 1 DAY)"
+    elif period == 'week':
+        interval = "AND transaction_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)"
+    elif period == 'month':
+        interval = "AND transaction_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)"
+    elif period == 'year':
+        interval = "AND transaction_date >= DATE_SUB(NOW(), INTERVAL 365 DAY)"
+    
+    query = f'''
+        SELECT 
+            COUNT(*) as total_transactions,
+            SUM(quantity) as total_items_sold,
+            SUM(total_amount) as total_revenue
+        FROM transactions
+        WHERE transaction_type = 'purchase'
+        {interval}
+    '''
+    
+    cursor.execute(query)
+    stats = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return stats or {}
+
+def add_test_transactions():
+    """Добавляет тестовые транзакции для аналитики"""
+    conn = get_connection()
+    if not conn:
+        return
+    
+    cursor = conn.cursor()
+    
+    # Проверяем, есть ли уже транзакции
+    cursor.execute("SELECT COUNT(*) FROM transactions")
+    count = cursor.fetchone()[0]
+    
+    if count == 0:
+        # Получаем пользователя и предметы
+        cursor.execute("SELECT id FROM users WHERE username = 'test_player'")
+        user = cursor.fetchone()
+        cursor.execute("SELECT id, price FROM items LIMIT 4")
+        items = cursor.fetchall()
+        
+        if user and items:
+            import random
+            from datetime import datetime, timedelta
+            
+            for i in range(30):  # 30 тестовых транзакций
+                item = random.choice(items)
+                quantity = random.randint(1, 3)
+                total = item[1] * quantity
+                date = datetime.now() - timedelta(days=random.randint(0, 30))
+                
+                cursor.execute('''
+                    INSERT INTO transactions (user_id, item_id, transaction_type, quantity, price_per_unit, total_amount, transaction_date)
+                    VALUES (%s, %s, 'purchase', %s, %s, %s, %s)
+                ''', (user[0], item[0], quantity, item[1], total, date))
+        
+        conn.commit()
+        print("Добавлены тестовые транзакции")
+    
+    cursor.close()
+    conn.close()
 
 # ============ ЗАПУСК СОЗДАНИЯ ТАБЛИЦ ============
 
@@ -1310,6 +1603,7 @@ if __name__ == "__main__":
     init_db()
     add_test_items()
     add_test_user()
+    add_test_transactions()
     print("\n=== Готово! ===")
     print("Тестовый пользователь: test_player / test123")
     print("Баланс: 2000 монет")

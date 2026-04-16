@@ -1,69 +1,293 @@
 {% extends "base.html" %}
 
-{% block title %}Аналитика цен{% endblock %}
+{% block title %}Аналитика{% endblock %}
 
 {% block extra_css %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    .period-btn.active {
+        background-color: #0d6efd;
+        color: white;
+    }
+    .stat-card {
+        text-align: center;
+        padding: 20px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    .stat-number {
+        font-size: 2rem;
+        font-weight: bold;
+    }
+    .stat-label {
+        font-size: 0.9rem;
+        opacity: 0.9;
+    }
+</style>
 {% endblock %}
 
 {% block content %}
-<h1 class="mb-4">📊 Аналитика цен</h1>
+<h1 class="mb-4">📊 Расширенная аналитика</h1>
+
+<!-- Переключатель периода -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5>📅 Период</h5>
+    </div>
+    <div class="card-body">
+        <div class="btn-group" role="group">
+            <button type="button" class="btn btn-outline-primary period-btn" data-period="day">День</button>
+            <button type="button" class="btn btn-outline-primary period-btn" data-period="week">Неделя</button>
+            <button type="button" class="btn btn-outline-primary period-btn" data-period="month">Месяц</button>
+            <button type="button" class="btn btn-outline-primary period-btn" data-period="year">Год</button>
+            <button type="button" class="btn btn-outline-primary period-btn active" data-period="all">Всё время</button>
+        </div>
+    </div>
+</div>
+
+<!-- Статистика -->
+<div class="row mb-4" id="statsContainer">
+    <div class="col-md-4">
+        <div class="stat-card">
+            <div class="stat-number" id="totalTransactions">-</div>
+            <div class="stat-label">Всего транзакций</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+            <div class="stat-number" id="totalItemsSold">-</div>
+            <div class="stat-label">Продано предметов</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+            <div class="stat-number" id="totalRevenue">-</div>
+            <div class="stat-label">Выручка (монет)</div>
+        </div>
+    </div>
+</div>
 
 <div class="row">
-    <div class="col-md-4">
+    <!-- Популярные предметы -->
+    <div class="col-md-6 mb-4">
         <div class="card">
             <div class="card-header">
-                <h5>Выберите предмет</h5>
+                <h5>🏆 Популярные предметы (Топ-10)</h5>
             </div>
             <div class="card-body">
-                <select id="itemSelect" class="form-select mb-3">
-                    <option value="">Выберите предмет...</option>
-                    {% for item in items %}
-                    <option value="{{ item.id }}">{{ item.name }} ({{ item.category }})</option>
-                    {% endfor %}
-                </select>
-                <label class="form-label">Период (дней)</label>
-                <select id="daysSelect" class="form-select mb-3">
-                    <option value="7">Последние 7 дней</option>
-                    <option value="30" selected>Последние 30 дней</option>
-                    <option value="90">Последние 90 дней</option>
-                </select>
-                <button id="loadChartBtn" class="btn btn-primary w-100">Загрузить график</button>
+                <canvas id="popularItemsChart" width="400" height="300"></canvas>
             </div>
         </div>
     </div>
-    <div class="col-md-8">
+    
+    <!-- Статистика по категориям -->
+    <div class="col-md-6 mb-4">
         <div class="card">
             <div class="card-header">
-                <h5>Динамика цен</h5>
+                <h5>📊 Распределение по категориям</h5>
             </div>
             <div class="card-body">
-                <canvas id="priceChart" width="400" height="300"></canvas>
-                <div id="noDataMsg" class="alert alert-info mt-3" style="display: none;">
-                    Нет данных о продажах этого предмета за выбранный период
-                </div>
+                <canvas id="categoryChart" width="400" height="300"></canvas>
             </div>
         </div>
     </div>
 </div>
 
+<!-- Динамика продаж -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5>📈 Динамика продаж</h5>
+    </div>
+    <div class="card-body">
+        <canvas id="salesDynamicsChart" width="800" height="300"></canvas>
+    </div>
+</div>
+
+<!-- Графики цен рынка -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5>🏪 Аналитика цен рынка</h5>
+    </div>
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label">Выберите предмет</label>
+                <select id="marketItemSelect" class="form-select">
+                    <option value="">Выберите предмет...</option>
+                    {% for item in items %}
+                    <option value="{{ item.id }}">{{ item.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Детализация графика</label>
+                <select id="marketPeriodSelect" class="form-select">
+                    <option value="day">За день (с шагом 15 минут)</option>
+                    <option value="week">За неделю (по дням)</option>
+                    <option value="month">За месяц (по дням)</option>
+                    <option value="year">За год (по месяцам)</option>
+                </select>
+            </div>
+        </div>
+        <canvas id="marketPriceChart" width="800" height="300"></canvas>
+        <div id="marketNoDataMsg" class="alert alert-info mt-3" style="display: none;">
+            Нет данных о продажах этого предмета за выбранный период
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
 <script>
-    let chart = null;
+    let popularChart, categoryChart, salesChart, marketChart;
+    let currentPeriod = 'all';
     
-    document.getElementById('loadChartBtn').addEventListener('click', async function() {
-        const itemId = document.getElementById('itemSelect').value;
-        const days = document.getElementById('daysSelect').value;
-        
-        if (!itemId) {
-            alert('Выберите предмет');
-            return;
-        }
-        
-        const response = await fetch(`/api/price_history/${itemId}?days=${days}`);
+    // Категории на русском
+    const categoryNames = {
+        'weapon': 'Оружие',
+        'armor': 'Броня',
+        'potion': 'Зелья',
+        'cosmetic': 'Косметика'
+    };
+    
+    // Загрузка статистики
+    async function loadStats(period) {
+        const response = await fetch(`/api/total_stats?period=${period}`);
+        const data = await response.json();
+        document.getElementById('totalTransactions').textContent = data.total_transactions || 0;
+        document.getElementById('totalItemsSold').textContent = data.total_items_sold || 0;
+        document.getElementById('totalRevenue').textContent = data.total_revenue || 0;
+    }
+    
+    // Загрузка популярных предметов
+    async function loadPopularItems(period) {
+        const response = await fetch(`/api/popular_items?period=${period}&limit=10`);
         const data = await response.json();
         
-        const noDataMsg = document.getElementById('noDataMsg');
-        const canvas = document.getElementById('priceChart');
+        const labels = data.map(item => item.name);
+        const values = data.map(item => item.total_sold);
+        
+        if (popularChart) popularChart.destroy();
+        
+        const ctx = document.getElementById('popularItemsChart').getContext('2d');
+        popularChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Количество продаж',
+                    data: values,
+                    backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                    title: { display: false }
+                }
+            }
+        });
+    }
+    
+    // Загрузка статистики по категориям
+    async function loadCategoryStats(period) {
+        const response = await fetch(`/api/category_stats?period=${period}`);
+        const data = await response.json();
+        
+        const labels = data.map(item => categoryNames[item.category] || item.category);
+        const values = data.map(item => item.total_sold);
+        
+        if (categoryChart) categoryChart.destroy();
+        
+        const ctx = document.getElementById('categoryChart').getContext('2d');
+        categoryChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.6)',
+                        'rgba(54, 162, 235, 0.6)',
+                        'rgba(255, 206, 86, 0.6)',
+                        'rgba(75, 192, 192, 0.6)'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+    }
+    
+    // Загрузка динамики продаж
+    async function loadSalesDynamics(period) {
+        const response = await fetch(`/api/sales_dynamics?period=${period}`);
+        const data = await response.json();
+        
+        const labels = data.map(item => item.date);
+        const counts = data.map(item => item.sales_count);
+        const amounts = data.map(item => item.total_amount);
+        
+        if (salesChart) salesChart.destroy();
+        
+        const ctx = document.getElementById('salesDynamicsChart').getContext('2d');
+        salesChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Количество продаж',
+                        data: counts,
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                        yAxisID: 'y',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Выручка (монет)',
+                        data: amounts,
+                        borderColor: 'rgb(255, 99, 132)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                        yAxisID: 'y1',
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    y: { title: { display: true, text: 'Количество продаж' } },
+                    y1: { position: 'right', title: { display: true, text: 'Выручка (монет)' } }
+                }
+            }
+        });
+    }
+    
+    // Загрузка графика цен рынка
+    async function loadMarketPriceChart() {
+        const itemId = document.getElementById('marketItemSelect').value;
+        const period = document.getElementById('marketPeriodSelect').value;
+        
+        if (!itemId) return;
+        
+        const response = await fetch(`/api/market_price_history_advanced/${itemId}?period=${period}`);
+        const data = await response.json();
+        
+        const noDataMsg = document.getElementById('marketNoDataMsg');
+        const canvas = document.getElementById('marketPriceChart');
         
         if (data.length === 0) {
             noDataMsg.style.display = 'block';
@@ -79,11 +303,10 @@
         const minPrices = data.map(d => d.min_price);
         const maxPrices = data.map(d => d.max_price);
         
-        if (chart) {
-            chart.destroy();
-        }
+        if (marketChart) marketChart.destroy();
         
-        chart = new Chart(canvas, {
+        const ctx = canvas.getContext('2d');
+        marketChart = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: labels,
@@ -114,34 +337,49 @@
             options: {
                 responsive: true,
                 plugins: {
-                    legend: {
-                        position: 'top',
-                    },
-                    title: {
-                        display: true,
-                        text: 'Динамика цен на предмет'
-                    }
+                    legend: { position: 'top' },
+                    title: { display: false }
                 },
                 scales: {
-                    y: {
-                        title: {
-                            display: true,
-                            text: 'Цена (монеты)'
-                        }
-                    },
-                    x: {
-                        title: {
-                            display: true,
-                            text: 'Дата'
-                        }
-                    }
+                    y: { title: { display: true, text: 'Цена (монеты)' } }
                 }
             }
         });
+    }
+    
+    // Обновление всей аналитики при смене периода
+    async function updateAnalytics(period) {
+        currentPeriod = period;
+        await Promise.all([
+            loadStats(period),
+            loadPopularItems(period),
+            loadCategoryStats(period),
+            loadSalesDynamics(period)
+        ]);
+    }
+    
+    // Обработчики событий
+    document.querySelectorAll('.period-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            const period = this.dataset.period;
+            await updateAnalytics(period);
+        });
+    });
+    
+    document.getElementById('marketItemSelect').addEventListener('change', loadMarketPriceChart);
+    document.getElementById('marketPeriodSelect').addEventListener('change', loadMarketPriceChart);
+    
+    // Загрузка при открытии страницы
+    document.addEventListener('DOMContentLoaded', async () => {
+        await updateAnalytics('all');
+        // Загружаем первый предмет для графика цен, если есть
+        const firstItem = document.getElementById('marketItemSelect').querySelector('option[value]:not([value=""])');
+        if (firstItem) {
+            firstItem.selected = true;
+            await loadMarketPriceChart();
+        }
     });
 </script>
-
-<div class="mt-3">
-    <a href="{{ url_for('catalog') }}" class="btn btn-secondary">← Назад</a>
-</div>
 {% endblock %}
