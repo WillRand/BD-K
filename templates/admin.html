@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Админ-панель{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">⚙️ Админ-панель</h1>
+
+<div class="row">
+    <!-- Добавление предмета -->
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>➕ Добавить предмет</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('admin_add_item') }}">
+                    <div class="mb-2">
+                        <input type="text" name="name" class="form-control" placeholder="Название" required>
+                    </div>
+                    <div class="mb-2">
+                        <textarea name="description" class="form-control" placeholder="Описание" rows="2"></textarea>
+                    </div>
+                    <div class="mb-2">
+                        <input type="number" name="price" class="form-control" placeholder="Цена" required>
+                    </div>
+                    <div class="mb-2">
+                        <select name="category" class="form-select">
+                            <option value="weapon">Оружие</option>
+                            <option value="armor">Броня</option>
+                            <option value="potion">Зелье</option>
+                            <option value="cosmetic">Косметика</option>
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <input type="number" name="stock" class="form-control" placeholder="Количество" required>
+                    </div>
+                    <div class="mb-2">
+                        <input type="text" name="image_url" class="form-control" placeholder="URL картинки">
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Добавить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Товары с малым остатком -->
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>⚠️ Товары с малым остатком (&lt;5)</h5>
+            </div>
+            <div class="card-body">
+                {% if low_stock %}
+                    <ul class="list-group">
+                    {% for item in low_stock %}
+                        <li class="list-group-item d-flex justify-content-between">
+                            {{ item.name }}
+                            <span class="badge bg-danger">{{ item.stock }} шт.</span>
+                        </li>
+                    {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-success">Все товары в достатке!</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Статистика -->
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>📊 Статистика</h5>
+            </div>
+            <div class="card-body">
+                <p>👥 Пользователей: {{ users|length }}</p>
+                <p>🛍️ Товаров: {{ items|length }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Управление товарами -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5>📋 Управление товарами</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Название</th>
+                        <th>Цена</th>
+                        <th>Категория</th>
+                        <th>В наличии</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    <tr>
+                        <td>{{ item.id }}</td>
+                        <td>{{ item.name }}</td>
+                        <td>{{ item.price }}</td>
+                        <td>{{ item.category }}</td>
+                        <td>
+                            <form method="POST" action="{{ url_for('admin_update_stock', item_id=item.id) }}" class="d-flex gap-1">
+                                <input type="number" name="stock" value="{{ item.stock }}" class="form-control form-control-sm" style="width: 80px;">
+                                <button type="submit" class="btn btn-sm btn-primary">Обновить</button>
+                            </form>
+                        </td>
+                        <td>
+                            <form method="POST" action="{{ url_for('admin_delete_item', item_id=item.id) }}" onsubmit="return confirm('Удалить {{ item.name }}?')">
+                                <button type="submit" class="btn btn-sm btn-danger">🗑️</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Мой инвентарь{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">📦 Мой инвентарь</h1>
+
+{% if items %}
+<div class="row">
+    {% for item in items %}
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <h5 class="card-title">{{ item.name }}</h5>
+                    <span class="badge bg-secondary">{{ item.quantity }} шт.</span>
+                </div>
+                <p class="card-text">{{ item.description }}</p>
+                <p class="text-muted small">Куплено: {{ item.purchased_at[:10] }}</p>
+                <form method="POST" action="{{ url_for('sell', item_id=item.id) }}" class="d-flex gap-2">
+                    <input type="number" name="quantity" value="1" min="1" max="{{ item.quantity }}" class="form-control w-50">
+                    <button type="submit" class="btn btn-warning">Продать</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info">
+    У вас пока нет предметов. <a href="{{ url_for('catalog') }}">Перейдите в магазин!</a>
+</div>
+{% endif %}
+
+<a href="{{ url_for('catalog') }}" class="btn btn-primary">🛒 В магазин</a>
+{% endblock %}

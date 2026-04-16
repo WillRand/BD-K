@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Каталог товаров{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">🛒 Каталог товаров</h1>
+
+<!-- Фильтры и сортировка -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <label class="form-label">Категория</label>
+        <select id="categoryFilter" class="form-select">
+            <option value="">Все</option>
+            <option value="weapon">Оружие</option>
+            <option value="armor">Броня</option>
+            <option value="potion">Зелья</option>
+            <option value="cosmetic">Косметика</option>
+        </select>
+    </div>
+    <div class="col-md-3">
+        <label class="form-label">Сортировка</label>
+        <select id="sortSelect" class="form-select">
+            <option value="name_ASC">По имени (А-Я)</option>
+            <option value="name_DESC">По имени (Я-А)</option>
+            <option value="price_ASC">Сначала дешёвые</option>
+            <option value="price_DESC">Сначала дорогие</option>
+        </select>
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Поиск</label>
+        <input type="text" id="searchInput" class="form-control" placeholder="Название предмета...">
+    </div>
+</div>
+
+<!-- Сетка товаров -->
+<div class="row" id="itemsContainer">
+    {% for item in items %}
+    <div class="col-md-3 mb-4 item-card" 
+         data-name="{{ item.name.lower() }}"
+         data-category="{{ item.category }}"
+         data-price="{{ item.price }}">
+        <div class="card h-100">
+            <div class="card-img-top text-center p-3 bg-light">
+                <span style="font-size: 4rem;">
+                    {% if item.category == 'weapon' %}⚔️
+                    {% elif item.category == 'armor' %}🛡️
+                    {% elif item.category == 'potion' %}🧪
+                    {% else %}✨
+                    {% endif %}
+                </span>
+            </div>
+            <div class="card-body">
+                <h5 class="card-title">{{ item.name }}</h5>
+                <p class="card-text">{{ item.description[:80] }}</p>
+                <p class="price">{{ item.price }} монет</p>
+                <p class="{% if item.stock <= 5 %}stock-low{% else %}stock-normal{% endif %}">
+                    📦 В наличии: {{ item.stock }} шт.
+                </p>
+                <form method="POST" action="{{ url_for('buy', item_id=item.id) }}" class="d-flex gap-2">
+                    <input type="number" name="quantity" value="1" min="1" max="{{ item.stock }}" class="form-control w-50">
+                    <button type="submit" class="btn btn-success flex-grow-1" {% if not current_user.is_authenticated or item.stock == 0 %}disabled{% endif %}>
+                        Купить
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<script>
+    const filterCategory = document.getElementById('categoryFilter');
+    const sortSelect = document.getElementById('sortSelect');
+    const searchInput = document.getElementById('searchInput');
+    
+    function filterAndSort() {
+        let items = Array.from(document.querySelectorAll('.item-card'));
+        const category = filterCategory.value;
+        const search = searchInput.value.toLowerCase();
+        
+        items = items.filter(item => {
+            const matchCategory = !category || item.dataset.category === category;
+            const matchSearch = !search || item.dataset.name.includes(search);
+            return matchCategory && matchSearch;
+        });
+        
+        const [sortBy, order] = sortSelect.value.split('_');
+        items.sort((a, b) => {
+            let valA, valB;
+            if (sortBy === 'name') {
+                valA = a.dataset.name;
+                valB = b.dataset.name;
+            } else {
+                valA = parseInt(a.dataset.price);
+                valB = parseInt(b.dataset.price);
+            }
+            if (order === 'ASC') return valA > valB ? 1 : -1;
+            else return valA < valB ? 1 : -1;
+        });
+        
+        const container = document.getElementById('itemsContainer');
+        container.innerHTML = '';
+        items.forEach(item => container.appendChild(item));
+    }
+    
+    filterCategory.addEventListener('change', filterAndSort);
+    sortSelect.addEventListener('change', filterAndSort);
+    searchInput.addEventListener('input', filterAndSort);
+</script>
+{% endblock %}
