@@ -1265,7 +1265,43 @@ def assign_moderator_role(user_id):
 
 
 
+# ============ ФУНКЦИИ ДЛЯ МОДЕРАТОРА ============
 
+def get_all_users_for_moderator():
+    """Получить список всех пользователей (для модератора)"""
+    conn = get_connection()
+    if not conn:
+        return []
+    
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute('''
+        SELECT id, username, role, balance, created_at 
+        FROM users 
+        ORDER BY username
+    ''')
+    users = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return users
+
+def get_user_inventory_readonly(user_id):
+    """Получить инвентарь пользователя только для чтения (без количества, только названия)"""
+    conn = get_connection()
+    if not conn:
+        return []
+    
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute('''
+        SELECT i.id, i.name, i.description, i.category, i.price, inv.quantity, inv.purchased_at
+        FROM inventory inv
+        JOIN items i ON inv.item_id = i.id
+        WHERE inv.user_id = %s
+        ORDER BY inv.purchased_at DESC
+    ''', (user_id,))
+    items = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return items
 
 
 # ============ ЗАПУСК СОЗДАНИЯ ТАБЛИЦ ============

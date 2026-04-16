@@ -13,7 +13,7 @@ from db import (
     get_all_items_list, update_item_full, get_item_full, create_user_admin, update_user_admin,
     delete_user_admin, get_all_tables, get_table_data, get_table_schema,
     get_all_users_inventory, update_item_stock_moderator, assign_moderator_role,
-    is_moderator_or_admin
+    is_moderator_or_admin, get_all_users_for_moderator, get_user_inventory_readonly
 )
 
 app = Flask(__name__)
@@ -555,8 +555,9 @@ def admin_database():
 @app.route('/moderator/inventories')
 @login_required
 def moderator_inventories():
-    if current_user.role not in ['moderator', 'admin']:
-        flash('Доступ запрещён', 'danger')
+    # Только для администратора
+    if current_user.role != 'admin':
+        flash('Доступ запрещён. Эта страница только для администратора.', 'danger')
         return redirect(url_for('catalog'))
     
     inventories = get_all_users_inventory()
@@ -585,7 +586,32 @@ def moderator_update_stock(item_id):
     return redirect(url_for('moderator_stock'))
 
 
+# ============ МОДЕРАТОР: ПРОСМОТР ИНВЕНТАРЕЙ ============
 
+@app.route('/moderator/users')
+@login_required
+def moderator_users():
+    if current_user.role not in ['moderator', 'admin']:
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    users = get_all_users_for_moderator()
+    return render_template('moderator_users.html', users=users)
+
+@app.route('/moderator/user/<int:user_id>')
+@login_required
+def moderator_user_inventory(user_id):
+    if current_user.role not in ['moderator', 'admin']:
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    user = get_user_by_id_admin(user_id)
+    if not user:
+        flash('Пользователь не найден', 'danger')
+        return redirect(url_for('moderator_users'))
+    
+    inventory = get_user_inventory_readonly(user_id)
+    return render_template('moderator_user_inventory.html', user=user, inventory=inventory)
 
 
 # ===============================================================================

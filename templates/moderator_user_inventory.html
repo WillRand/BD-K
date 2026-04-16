@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Инвентарь: {{ user.username }}{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">📦 Инвентарь игрока: {{ user.username }}</h1>
+
+<div class="row">
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>Информация об игроке</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>ID:</strong> {{ user.id }}</p>
+                <p><strong>Имя:</strong> {{ user.username }}</p>
+                <p><strong>Роль:</strong> 
+                    {% if user.role == 'admin' %}
+                        <span class="badge bg-danger">Администратор</span>
+                    {% elif user.role == 'moderator' %}
+                        <span class="badge bg-warning">Модератор</span>
+                    {% else %}
+                        <span class="badge bg-secondary">Игрок</span>
+                    {% endif %}
+                </p>
+                <p><strong>Баланс:</strong> {{ user.balance }} монет</p>
+                <p><strong>Дата регистрации:</strong> {{ user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else 'Неизвестно' }}</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5>🎒 Инвентарь игрока</h5>
+            </div>
+            <div class="card-body">
+                {% if inventory %}
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Название</th>
+                                <th>Категория</th>
+                                <th>Описание</th>
+                                <th>Цена покупки</th>
+                                <th>Количество</th>
+                                <th>Дата покупки</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in inventory %}
+                            <tr>
+                                <td>{{ item.name }}</td>
+                                <td>{{ item.category }}</td>
+                                <td>{{ item.description[:50] }}{% if item.description|length > 50 %}...{% endif %}</td>
+                                <td>{{ item.price }} монет</td>
+                                <td>{{ item.quantity }} шт.</td>
+                                <td>{{ item.purchased_at.strftime('%Y-%m-%d') if item.purchased_at else 'Неизвестно' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    У игрока пока нет предметов в инвентаре.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="mt-3">
+    <a href="{{ url_for('moderator_users') }}" class="btn btn-secondary">← Назад к списку игроков</a>
+    <a href="{{ url_for('catalog') }}" class="btn btn-outline-secondary">← На главную</a>
+</div>
+
+<div class="alert alert-info mt-3">
+    <i class="bi bi-info-circle"></i> Режим просмотра: вы не можете редактировать инвентарь игрока.
+</div>
+{% endblock %}

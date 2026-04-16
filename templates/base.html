@@ -59,7 +59,7 @@
                                     🛡️ Модерация
                                 </a>
                                 <ul class="dropdown-menu">
-                                    <li><a class="dropdown-item" href="{{ url_for('moderator_inventories') }}">👥 Инвентари игроков</a></li>
+                                    <li><a class="dropdown-item" href="{{ url_for('moderator_users') }}">👥 Просмотр инвентарей</a></li>
                                     <li><a class="dropdown-item" href="{{ url_for('moderator_stock') }}">📦 Управление складом</a></li>
                                 </ul>
                             </li>
@@ -74,6 +74,8 @@
                                     <li><a class="dropdown-item" href="{{ url_for('admin_panel') }}">📊 Главная</a></li>
                                     <li><a class="dropdown-item" href="{{ url_for('admin_users') }}">👥 Пользователи</a></li>
                                     <li><a class="dropdown-item" href="{{ url_for('admin_database') }}">🗄️ Просмотр БД</a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item" href="{{ url_for('moderator_inventories') }}">📋 Все инвентари (старая версия)</a></li>
                                 </ul>
                             </li>
                         {% endif %}
