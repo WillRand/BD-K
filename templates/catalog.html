@@ -5,7 +5,7 @@
 {% block content %}
 <h1 class="mb-4">🛒 Каталог товаров</h1>
 
-<!-- Фильтры (серверные) и быстрый поиск (клиентский) -->
+<!-- Фильтры и быстрый поиск -->
 <div class="row mb-4">
     <div class="col-md-3">
         <label class="form-label">Категория</label>
@@ -28,7 +28,10 @@
     </div>
     <div class="col-md-4">
         <label class="form-label">🔍 Быстрый поиск по названию</label>
-        <input type="text" id="quickSearchInput" class="form-control" placeholder="Введите название предмета...">
+        <div class="input-group">
+            <input type="text" id="quickSearchInput" class="form-control" placeholder="Введите название предмета...">
+            <button id="clearSearchBtn" class="btn btn-outline-secondary" type="button">✖️ Очистить</button>
+        </div>
         <small class="text-muted">Поиск работает мгновенно, без перезагрузки страницы</small>
     </div>
     <div class="col-md-2">
@@ -41,7 +44,7 @@
     </div>
 </div>
 
-<!-- Сетка товаров -->
+<!-- Сетка товаров (оригинальные карточки) -->
 <div class="row" id="itemsContainer">
     {% for item in items %}
     <div class="col-md-3 mb-4 item-card" 
@@ -84,6 +87,12 @@
     {% endfor %}
 </div>
 
+<!-- Кнопки управления -->
+<div class="mt-3">
+    <button id="resetFiltersBtn" class="btn btn-secondary">🔄 Сбросить все фильтры</button>
+    <a href="{{ url_for('catalog') }}" class="btn btn-outline-primary">🔄 Перезагрузить страницу</a>
+</div>
+
 <script>
     // Получаем элементы DOM
     const categorySelect = document.getElementById('categorySelect');
@@ -92,27 +101,34 @@
     const stockSelect = document.getElementById('stockSelect');
     const itemsContainer = document.getElementById('itemsContainer');
     
-    // Функция для получения всех карточек товаров
-    function getAllCards() {
-        return Array.from(document.querySelectorAll('.item-card'));
+    // Сохраняем оригинальные карточки при загрузке страницы
+    let originalCards = [];
+    
+    // Функция для сохранения оригинальных карточек
+    function saveOriginalCards() {
+        originalCards = Array.from(document.querySelectorAll('.item-card'));
     }
     
     // Функция для применения всех фильтров и сортировки
     function applyFiltersAndSort() {
-        const allCards = getAllCards();
+        // Если оригинальные карточки ещё не сохранены - сохраняем
+        if (originalCards.length === 0) {
+            saveOriginalCards();
+        }
+        
         const category = categorySelect.value;
         const searchText = quickSearchInput.value.toLowerCase().trim();
         const stockOption = stockSelect.value;
         
-        // 1. Фильтрация
-        const filteredCards = allCards.filter(card => {
+        // 1. Фильтрация (всегда из оригинальных карточек)
+        const filteredCards = originalCards.filter(card => {
             // Фильтр по категории
             if (category && card.dataset.category !== category) {
                 return false;
             }
             
-            // Фильтр по поиску (быстрый поиск по названию)
-            if (searchText && !card.dataset.name.includes(searchText)) {
+            // Фильтр по поиску (если есть текст)
+            if (searchText !== '' && !card.dataset.name.includes(searchText)) {
                 return false;
             }
             
@@ -153,48 +169,56 @@
             }
         });
         
-        // 3. Обновление контейнера
+        // 3. Очищаем контейнер и добавляем отфильтрованные карточки
         itemsContainer.innerHTML = '';
         
         if (filteredCards.length === 0) {
             itemsContainer.innerHTML = '<div class="col-12"><div class="alert alert-info text-center">🔍 Ничего не найдено</div></div>';
         } else {
             filteredCards.forEach(card => {
-                itemsContainer.appendChild(card);
+                itemsContainer.appendChild(card.cloneNode(true)); // Клонируем, чтобы сохранить оригинал
             });
         }
+    }
+    
+    // Функция для очистки поиска
+    function clearSearch() {
+        quickSearchInput.value = '';
+        applyFiltersAndSort();
+        quickSearchInput.focus();
+    }
+    
+    // Функция для сброса всех фильтров
+    function resetAllFilters() {
+        categorySelect.value = '';
+        sortSelect.value = 'name_asc';
+        quickSearchInput.value = '';
+        stockSelect.value = 'all';
+        applyFiltersAndSort();
     }
     
     // Навешиваем обработчики событий
     categorySelect.addEventListener('change', applyFiltersAndSort);
     sortSelect.addEventListener('change', applyFiltersAndSort);
-    quickSearchInput.addEventListener('input', applyFiltersAndSort);  // <-- быстрый поиск при вводе
+    quickSearchInput.addEventListener('input', applyFiltersAndSort);
     stockSelect.addEventListener('change', applyFiltersAndSort);
     
-    // Запускаем фильтрацию при загрузке страницы
-    document.addEventListener('DOMContentLoaded', applyFiltersAndSort);
-</script>
-
-<!-- Кнопка сброса (очищает все фильтры) -->
-<div class="mt-3">
-    <button id="resetFiltersBtn" class="btn btn-secondary">🔄 Сбросить все фильтры</button>
-</div>
-
-<script>
-    // Кнопка сброса фильтров
+    // Кнопка очистки поиска
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
+    if (clearSearchBtn) {
+        clearSearchBtn.addEventListener('click', clearSearch);
+    }
+    
+    // Кнопка сброса всех фильтров
     const resetBtn = document.getElementById('resetFiltersBtn');
     if (resetBtn) {
-        resetBtn.addEventListener('click', function() {
-            categorySelect.value = '';
-            sortSelect.value = 'name_asc';
-            quickSearchInput.value = '';
-            stockSelect.value = 'all';
-            applyFiltersAndSort();
-        });
+        resetBtn.addEventListener('click', resetAllFilters);
     }
+    
+    // Сохраняем оригинальные карточки после загрузки страницы
+    document.addEventListener('DOMContentLoaded', function() {
+        saveOriginalCards();
+        applyFiltersAndSort();
+    });
 </script>
-
-<div class="mt-2">
-    <a href="{{ url_for('catalog') }}" class="btn btn-outline-primary btn-sm">🔄 Перезагрузить страницу</a>
-</div>
 {% endblock %}
