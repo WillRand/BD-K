@@ -442,6 +442,174 @@ def get_low_stock_items(threshold=5):
     conn.close()
     return items
 
+
+# ============ АДМИН-ФУНКЦИИ ДЛЯ УПРАВЛЕНИЯ ПОЛЬЗОВАТЕЛЯМИ ============
+
+def get_all_users_with_details():
+    """Получить всех пользователей с деталями (для админа)"""
+    conn = get_connection()
+    if not conn:
+        return []
+    
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute('''
+        SELECT id, username, role, balance, created_at 
+        FROM users 
+        ORDER BY id
+    ''')
+    users = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return users
+
+def update_user_balance(user_id, new_balance):
+    """Изменить баланс пользователя (админ)"""
+    if new_balance < 0:
+        return False, "Баланс не может быть отрицательным"
+    
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения"
+    
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE users SET balance = %s WHERE id = %s", (new_balance, user_id))
+        conn.commit()
+        return True, f"Баланс пользователя обновлён на {new_balance} монет"
+    except Error as e:
+        return False, f"Ошибка: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_user_inventory_admin(user_id):
+    """Получить инвентарь конкретного пользователя (для админа)"""
+    conn = get_connection()
+    if not conn:
+        return []
+    
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute('''
+        SELECT i.id, i.name, i.description, i.price, i.category, inv.quantity, inv.purchased_at
+        FROM inventory inv
+        JOIN items i ON inv.item_id = i.id
+        WHERE inv.user_id = %s
+        ORDER BY inv.purchased_at DESC
+    ''', (user_id,))
+    items = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return items
+
+def get_user_by_id_admin(user_id):
+    """Получить информацию о пользователе по ID (для админа)"""
+    conn = get_connection()
+    if not conn:
+        return None
+    
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id, username, role, balance, created_at FROM users WHERE id = %s", (user_id,))
+    user = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return user
+
+def admin_remove_item_from_inventory(user_id, item_id, quantity=1):
+    """Удалить предмет из инвентаря пользователя (админ)"""
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения"
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Проверяем наличие предмета
+        cursor.execute('''
+            SELECT quantity FROM inventory 
+            WHERE user_id = %s AND item_id = %s
+        ''', (user_id, item_id))
+        inv_item = cursor.fetchone()
+        
+        if not inv_item:
+            return False, "У пользователя нет такого предмета"
+        
+        if inv_item['quantity'] <= quantity:
+            # Удаляем полностью
+            cursor.execute('''
+                DELETE FROM inventory WHERE user_id = %s AND item_id = %s
+            ''', (user_id, item_id))
+        else:
+            # Уменьшаем количество
+            cursor.execute('''
+                UPDATE inventory SET quantity = quantity - %s 
+                WHERE user_id = %s AND item_id = %s
+            ''', (quantity, user_id, item_id))
+        
+        # Возвращаем товар на склад
+        cursor.execute('''
+            UPDATE items SET stock = stock + %s WHERE id = %s
+        ''', (quantity, item_id))
+        
+        conn.commit()
+        return True, f"Предмет удалён из инвентаря пользователя"
+    except Error as e:
+        conn.rollback()
+        return False, f"Ошибка: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+
+def admin_add_item_to_inventory(user_id, item_id, quantity=1):
+    """Добавить предмет в инвентарь пользователя (админ)"""
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения"
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Проверяем, есть ли предмет на складе
+        cursor.execute("SELECT stock, name FROM items WHERE id = %s", (item_id,))
+        item = cursor.fetchone()
+        
+        if not item:
+            return False, "Предмет не найден"
+        
+        if item['stock'] < quantity:
+            return False, f"Недостаточно товара на складе. В наличии: {item['stock']}"
+        
+        # Добавляем в инвентарь
+        cursor.execute('''
+            INSERT INTO inventory (user_id, item_id, quantity)
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE quantity = quantity + %s
+        ''', (user_id, item_id, quantity, quantity))
+        
+        # Уменьшаем склад
+        cursor.execute('''
+            UPDATE items SET stock = stock - %s WHERE id = %s
+        ''', (quantity, item_id))
+        
+        conn.commit()
+        return True, f"Предмет '{item['name']}' добавлен пользователю"
+    except Error as e:
+        conn.rollback()
+        return False, f"Ошибка: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_all_items_for_admin():
+    """Получить все предметы для админ-панели (включая те, что не в наличии)"""
+    conn = get_connection()
+    if not conn:
+        return []
+    
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM items ORDER BY id")
+    items = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return items
+
 # ============ ЗАПУСК СОЗДАНИЯ ТАБЛИЦ ============
 
 if __name__ == "__main__":

@@ -67,17 +67,20 @@
     </div>
     
     <!-- Статистика -->
-    <div class="col-md-4 mb-4">
-        <div class="card">
-            <div class="card-header">
-                <h5>📊 Статистика</h5>
-            </div>
-            <div class="card-body">
-                <p>👥 Пользователей: {{ users|length }}</p>
-                <p>🛍️ Товаров: {{ items|length }}</p>
-            </div>
+   <div class="col-md-4 mb-4">
+    <div class="card">
+        <div class="card-header">
+            <h5>📊 Статистика</h5>
+        </div>
+        <div class="card-body">
+            <p>👥 Пользователей: {{ users|length }}</p>
+            <p>🛍️ Товаров: {{ items|length }}</p>
+            <a href="{{ url_for('admin_users') }}" class="btn btn-outline-primary w-100 mt-2">
+                👥 Управление пользователями
+            </a>
         </div>
     </div>
+</div>
 </div>
 
 <!-- Управление товарами -->

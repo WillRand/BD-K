@@ -4,7 +4,10 @@ import bcrypt
 from db import (
     get_connection, get_all_items, get_item_by_id, purchase_item,
     get_user_inventory, get_user_balance, add_item, update_item_stock,
-    delete_item, get_all_users, get_low_stock_items
+    delete_item, get_all_users, get_low_stock_items,
+    get_all_users_with_details, update_user_balance, get_user_inventory_admin,
+    get_user_by_id_admin, admin_remove_item_from_inventory, admin_add_item_to_inventory,
+    get_all_items_for_admin
 )
 
 app = Flask(__name__)
@@ -222,6 +225,77 @@ def sell(item_id):
         flash(message, 'danger')
     
     return redirect(url_for('inventory'))
+
+# ============ АДМИН: УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ ============
+
+@app.route('/admin/users')
+@login_required
+def admin_users():
+    if current_user.role != 'admin':
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    users = get_all_users_with_details()
+    return render_template('admin_users.html', users=users)
+
+@app.route('/admin/user/<int:user_id>')
+@login_required
+def admin_user_detail(user_id):
+    if current_user.role != 'admin':
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    user = get_user_by_id_admin(user_id)
+    if not user:
+        flash('Пользователь не найден', 'danger')
+        return redirect(url_for('admin_users'))
+    
+    inventory = get_user_inventory_admin(user_id)
+    all_items = get_all_items_for_admin()
+    
+    return render_template('admin_user_detail.html', user=user, inventory=inventory, all_items=all_items)
+
+@app.route('/admin/user/<int:user_id>/update_balance', methods=['POST'])
+@login_required
+def admin_update_balance(user_id):
+    if current_user.role != 'admin':
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    new_balance = int(request.form.get('new_balance', 0))
+    success, message = update_user_balance(user_id, new_balance)
+    flash(message, 'success' if success else 'danger')
+    
+    return redirect(url_for('admin_user_detail', user_id=user_id))
+
+@app.route('/admin/user/<int:user_id>/remove_item/<int:item_id>', methods=['POST'])
+@login_required
+def admin_remove_item(user_id, item_id):
+    if current_user.role != 'admin':
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    quantity = int(request.form.get('quantity', 1))
+    success, message = admin_remove_item_from_inventory(user_id, item_id, quantity)
+    flash(message, 'success' if success else 'danger')
+    
+    return redirect(url_for('admin_user_detail', user_id=user_id))
+
+@app.route('/admin/user/<int:user_id>/add_item', methods=['POST'])
+@login_required
+def admin_add_item_to_user(user_id):
+    if current_user.role != 'admin':
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    item_id = int(request.form.get('item_id'))
+    quantity = int(request.form.get('quantity', 1))
+    success, message = admin_add_item_to_inventory(user_id, item_id, quantity)
+    flash(message, 'success' if success else 'danger')
+    
+    return redirect(url_for('admin_user_detail', user_id=user_id))
+
+
 
 if __name__ == '__main__':
     app.run(debug=True)
