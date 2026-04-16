@@ -33,6 +33,15 @@
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('inventory') }}">📦 Инвентарь</a>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('market') }}">🏪 Рынок</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('transactions') }}">📜 История</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('analytics') }}">📊 Аналитика</a>
+                        </li>
                         {% if current_user.role == 'admin' %}
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('admin_panel') }}">⚙️ Админка</a>
@@ -40,13 +49,6 @@
                         {% endif %}
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('logout') }}">🚪 Выйти</a>
-                        </li>
-                    {% else %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('login') }}">Вход</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('register') }}">Регистрация</a>
                         </li>
                     {% endif %}
                 </ul>

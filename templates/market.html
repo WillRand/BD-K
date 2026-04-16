@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Рынок{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">🏪 Рынок (торговля между игроками)</h1>
+
+<div class="row mb-4">
+    <div class="col-md-8">
+        <a href="{{ url_for('market_sell') }}" class="btn btn-success">
+            📤 Выставить предмет на продажу
+        </a>
+    </div>
+    <div class="col-md-4">
+        <form method="GET" class="d-flex gap-2">
+            <select name="item_id" class="form-select">
+                <option value="">Все предметы</option>
+                {% for item in all_items %}
+                <option value="{{ item.id }}" {% if request.args.get('item_id')|int == item.id %}selected{% endif %}>
+                    {{ item.name }}
+                </option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-primary">Фильтр</button>
+        </form>
+    </div>
+</div>
+
+{% if offers %}
+<div class="row">
+    {% for offer in offers %}
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">{{ offer.name }}</h5>
+                <p class="card-text text-muted">{{ offer.description[:60] }}</p>
+                <p class="text-primary">💰 {{ offer.price_per_unit }} монет/шт.</p>
+                <p>📦 В продаже: {{ offer.quantity }} шт.</p>
+                <p>👤 Продавец: {{ offer.seller_name }}</p>
+                <form method="POST" action="{{ url_for('market_buy', offer_id=offer.id) }}" class="d-flex gap-2 mt-3">
+                    <input type="number" name="quantity" value="1" min="1" max="{{ offer.quantity }}" class="form-control w-50">
+                    <button type="submit" class="btn btn-primary w-100">Купить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info">Нет активных предложений. Будьте первым, кто выставит товар на продажу!</div>
+{% endif %}
+
+<a href="{{ url_for('catalog') }}" class="btn btn-secondary mt-3">← Назад в магазин</a>
+{% endblock %}

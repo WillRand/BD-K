@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 import bcrypt
 from db import (
@@ -8,7 +8,10 @@ from db import (
     get_all_users_with_details, update_user_balance, get_user_inventory_admin,
     get_user_by_id_admin, admin_remove_item_from_inventory,
     get_all_items_for_admin, admin_add_item_to_inventory_no_stock_check,
-    update_item_stock_admin
+    update_item_stock_admin,
+    create_market_offer, get_active_market_offers, buy_from_market,
+    cancel_market_offer, get_player_transactions, get_item_price_history,
+    get_all_items_list
 )
 
 app = Flask(__name__)
@@ -324,6 +327,100 @@ def admin_add_item_to_user_no_stock(user_id):
     flash(message, 'success' if success else 'danger')
     
     return redirect(url_for('admin_user_detail', user_id=user_id))
+
+# ============ РЫНОК (ТОРГОВЛЯ МЕЖДУ ИГРОКАМИ) ============
+
+@app.route('/market')
+@login_required
+def market():
+    item_filter = request.args.get('item_id', '')
+    offers = get_active_market_offers(exclude_user_id=current_user.id, item_filter=item_filter if item_filter else None)
+    all_items = get_all_items_list()
+    return render_template('market.html', offers=offers, all_items=all_items)
+
+@app.route('/market/sell', methods=['GET', 'POST'])
+@login_required
+def market_sell():
+    if request.method == 'POST':
+        item_id = int(request.form['item_id'])
+        quantity = int(request.form['quantity'])
+        price = int(request.form['price'])
+        
+        success, message = create_market_offer(current_user.id, item_id, quantity, price)
+        flash(message, 'success' if success else 'danger')
+        
+        if success:
+            return redirect(url_for('market_sell'))  # Остаёмся на той же странице
+    
+    # GET - показываем форму
+    inventory_items = get_user_inventory(current_user.id)
+    
+    # Получаем активные предложения пользователя
+    user_offers = get_active_market_offers(exclude_user_id=None)  # получаем все
+    user_offers = [offer for offer in user_offers if offer['seller_id'] == current_user.id]
+    
+    return render_template('market_sell.html', inventory=inventory_items, offers=user_offers)
+
+@app.route('/market/buy/<int:offer_id>', methods=['POST'])
+@login_required
+def market_buy(offer_id):
+    quantity = int(request.form.get('quantity', 1))
+    success, message = buy_from_market(current_user.id, offer_id, quantity)
+    flash(message, 'success' if success else 'danger')
+    return redirect(url_for('market'))
+
+@app.route('/market/cancel/<int:offer_id>', methods=['POST'])
+@login_required
+def market_cancel(offer_id):
+    success, message = cancel_market_offer(offer_id, current_user.id)
+    flash(message, 'success' if success else 'danger')
+    return redirect(url_for('market'))
+
+# ============ ИСТОРИЯ ТРАНЗАКЦИЙ ============
+
+@app.route('/transactions')
+@login_required
+def transactions():
+    limit = request.args.get('limit', 50, type=int)
+    player_tx = get_player_transactions(current_user.id, limit)
+    
+    # Также получаем покупки в магазине из таблицы transactions
+    conn = get_connection()
+    shop_tx = []
+    if conn:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute('''
+            SELECT 'shop_purchase' as type, transaction_date as date, quantity, price_per_unit, total_amount, i.name as item_name, 'Магазин' as other_party
+            FROM transactions t
+            JOIN items i ON t.item_id = i.id
+            WHERE t.user_id = %s AND t.transaction_type = 'purchase'
+            ORDER BY transaction_date DESC
+            LIMIT %s
+        ''', (current_user.id, limit))
+        shop_tx = cursor.fetchall()
+        cursor.close()
+        conn.close()
+    
+    # Объединяем и сортируем
+    all_tx = player_tx + shop_tx
+    all_tx.sort(key=lambda x: x['date'], reverse=True)
+    
+    return render_template('transactions.html', transactions=all_tx[:limit])
+
+# ============ ГРАФИКИ ЦЕН ============
+
+@app.route('/analytics')
+@login_required
+def analytics():
+    items = get_all_items_list()
+    return render_template('analytics.html', items=items)
+
+@app.route('/api/price_history/<int:item_id>')
+@login_required
+def api_price_history(item_id):
+    days = request.args.get('days', 30, type=int)
+    history = get_item_price_history(item_id, days)
+    return jsonify(history)
 
 if __name__ == '__main__':
     app.run(debug=True)

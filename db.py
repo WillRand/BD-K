@@ -81,7 +81,77 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
         )
-''')
+    ''')
+
+    # Таблица для предложений игроков (рынок)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS market_offers (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            seller_id INT NOT NULL,
+            item_id INT NOT NULL,
+            quantity INT NOT NULL CHECK (quantity > 0),
+            price_per_unit INT NOT NULL CHECK (price_per_unit >= 0),
+            status ENUM('active', 'sold', 'cancelled') DEFAULT 'active',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            sold_at TIMESTAMP NULL,
+            FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+        )
+    ''')
+    
+    # Таблица для сделок между игроками
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS player_transactions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            offer_id INT NOT NULL,
+            buyer_id INT NOT NULL,
+            seller_id INT NOT NULL,
+            item_id INT NOT NULL,
+            quantity INT NOT NULL,
+            price_per_unit INT NOT NULL,
+            total_amount INT NOT NULL,
+            transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (offer_id) REFERENCES market_offers(id) ON DELETE CASCADE,
+            FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+        )
+    ''')
+
+    # Таблица для предложений игроков (рынок)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS market_offers (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            seller_id INT NOT NULL,
+            item_id INT NOT NULL,
+            quantity INT NOT NULL CHECK (quantity > 0),
+            price_per_unit INT NOT NULL CHECK (price_per_unit >= 0),
+            status ENUM('active', 'sold', 'cancelled') DEFAULT 'active',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            sold_at TIMESTAMP NULL,
+            FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+        )
+    ''')
+
+    # Таблица для сделок между игроками
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS player_transactions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            offer_id INT NOT NULL,
+            buyer_id INT NOT NULL,
+            seller_id INT NOT NULL,
+            item_id INT NOT NULL,
+            quantity INT NOT NULL,
+            price_per_unit INT NOT NULL,
+            total_amount INT NOT NULL,
+            transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (offer_id) REFERENCES market_offers(id) ON DELETE CASCADE,
+            FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+        )
+    ''')
     
     cursor.close()
     conn.close()
@@ -692,6 +762,272 @@ def update_item_stock_admin(item_id, new_stock):
     finally:
         cursor.close()
         conn.close()
+
+# ============ РЫНОК (ТОРГОВЛЯ МЕЖДУ ИГРОКАМИ) ============
+
+def create_market_offer(seller_id, item_id, quantity, price_per_unit):
+    """Выставить предмет на продажу"""
+    if quantity <= 0 or price_per_unit < 0:
+        return False, "Некорректные данные"
+    
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения"
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Проверяем, есть ли у продавца такой предмет в инвентаре
+        cursor.execute('''
+            SELECT quantity FROM inventory 
+            WHERE user_id = %s AND item_id = %s
+        ''', (seller_id, item_id))
+        inv = cursor.fetchone()
+        
+        if not inv or inv['quantity'] < quantity:
+            return False, "У вас нет столько предметов"
+        
+        # Уменьшаем инвентарь продавца
+        if inv['quantity'] == quantity:
+            cursor.execute("DELETE FROM inventory WHERE user_id = %s AND item_id = %s", (seller_id, item_id))
+        else:
+            cursor.execute('''
+                UPDATE inventory SET quantity = quantity - %s 
+                WHERE user_id = %s AND item_id = %s
+            ''', (quantity, seller_id, item_id))
+        
+        # Создаём предложение
+        cursor.execute('''
+            INSERT INTO market_offers (seller_id, item_id, quantity, price_per_unit)
+            VALUES (%s, %s, %s, %s)
+        ''', (seller_id, item_id, quantity, price_per_unit))
+        
+        conn.commit()
+        return True, "Предмет выставлен на продажу"
+    except Error as e:
+        conn.rollback()
+        return False, f"Ошибка: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_active_market_offers(exclude_user_id=None, item_filter=None):
+    """Получить активные предложения на рынке"""
+    conn = get_connection()
+    if not conn:
+        return []
+    
+    cursor = conn.cursor(dictionary=True)
+    query = '''
+        SELECT mo.*, i.name, i.description, i.category, u.username as seller_name
+        FROM market_offers mo
+        JOIN items i ON mo.item_id = i.id
+        JOIN users u ON mo.seller_id = u.id
+        WHERE mo.status = 'active'
+    '''
+    params = []
+    
+    if exclude_user_id:
+        query += " AND mo.seller_id != %s"
+        params.append(exclude_user_id)
+    
+    if item_filter:
+        query += " AND mo.item_id = %s"
+        params.append(item_filter)
+    
+    query += " ORDER BY mo.price_per_unit ASC, mo.created_at ASC"
+    
+    cursor.execute(query, params)
+    offers = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return offers
+
+def buy_from_market(buyer_id, offer_id, quantity):
+    """Купить предмет с рынка"""
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения"
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Получаем информацию о предложении
+        cursor.execute('''
+            SELECT mo.*, i.name, u.balance as seller_balance
+            FROM market_offers mo
+            JOIN items i ON mo.item_id = i.id
+            JOIN users u ON mo.seller_id = u.id
+            WHERE mo.id = %s AND mo.status = 'active'
+        ''', (offer_id,))
+        offer = cursor.fetchone()
+        
+        if not offer:
+            return False, "Предложение уже неактивно"
+        
+        if quantity > offer['quantity']:
+            return False, f"Доступно только {offer['quantity']} шт."
+        
+        total_cost = offer['price_per_unit'] * quantity
+        
+        # Проверяем баланс покупателя
+        cursor.execute("SELECT balance FROM users WHERE id = %s", (buyer_id,))
+        buyer = cursor.fetchone()
+        
+        if buyer['balance'] < total_cost:
+            return False, f"Недостаточно средств. Нужно: {total_cost}"
+        
+        # Проверяем, что покупатель не продавец
+        if buyer_id == offer['seller_id']:
+            return False, "Нельзя купить свой же товар"
+        
+        # Переводим деньги
+        cursor.execute("UPDATE users SET balance = balance - %s WHERE id = %s", (total_cost, buyer_id))
+        cursor.execute("UPDATE users SET balance = balance + %s WHERE id = %s", (total_cost, offer['seller_id']))
+        
+        # Обновляем или закрываем предложение
+        if quantity == offer['quantity']:
+            cursor.execute("UPDATE market_offers SET status = 'sold', sold_at = NOW() WHERE id = %s", (offer_id,))
+        else:
+            cursor.execute("UPDATE market_offers SET quantity = quantity - %s WHERE id = %s", (quantity, offer_id))
+        
+        # Добавляем предмет покупателю в инвентарь
+        cursor.execute('''
+            INSERT INTO inventory (user_id, item_id, quantity)
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE quantity = quantity + %s
+        ''', (buyer_id, offer['item_id'], quantity, quantity))
+        
+        # Записываем сделку
+        cursor.execute('''
+            INSERT INTO player_transactions (offer_id, buyer_id, seller_id, item_id, quantity, price_per_unit, total_amount)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ''', (offer_id, buyer_id, offer['seller_id'], offer['item_id'], quantity, offer['price_per_unit'], total_cost))
+        
+        conn.commit()
+        return True, f"Куплено {quantity} шт. '{offer['name']}' за {total_cost} монет"
+    except Error as e:
+        conn.rollback()
+        return False, f"Ошибка: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+
+def cancel_market_offer(offer_id, user_id):
+    """Отменить своё предложение и вернуть предмет"""
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения"
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute('''
+            SELECT * FROM market_offers 
+            WHERE id = %s AND seller_id = %s AND status = 'active'
+        ''', (offer_id, user_id))
+        offer = cursor.fetchone()
+        
+        if not offer:
+            return False, "Предложение не найдено или уже закрыто"
+        
+        # Возвращаем предмет в инвентарь
+        cursor.execute('''
+            INSERT INTO inventory (user_id, item_id, quantity)
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE quantity = quantity + %s
+        ''', (user_id, offer['item_id'], offer['quantity'], offer['quantity']))
+        
+        # Закрываем предложение
+        cursor.execute("UPDATE market_offers SET status = 'cancelled' WHERE id = %s", (offer_id,))
+        
+        conn.commit()
+        return True, "Предложение отменено, предметы возвращены"
+    except Error as e:
+        conn.rollback()
+        return False, f"Ошибка: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_player_transactions(user_id, limit=50):
+    """Получить историю сделок игрока (покупки и продажи)"""
+    conn = get_connection()
+    if not conn:
+        return []
+    
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute('''
+        (SELECT 
+            'purchase' as type,
+            pt.transaction_date as date,
+            pt.quantity,
+            pt.price_per_unit,
+            pt.total_amount,
+            i.name as item_name,
+            u.username as other_party
+        FROM player_transactions pt
+        JOIN items i ON pt.item_id = i.id
+        JOIN users u ON pt.seller_id = u.id
+        WHERE pt.buyer_id = %s)
+        
+        UNION ALL
+        
+        (SELECT 
+            'sale' as type,
+            pt.transaction_date as date,
+            pt.quantity,
+            pt.price_per_unit,
+            pt.total_amount,
+            i.name as item_name,
+            u.username as other_party
+        FROM player_transactions pt
+        JOIN items i ON pt.item_id = i.id
+        JOIN users u ON pt.buyer_id = u.id
+        WHERE pt.seller_id = %s)
+        
+        ORDER BY date DESC
+        LIMIT %s
+    ''', (user_id, user_id, limit))
+    transactions = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return transactions
+
+def get_item_price_history(item_id, days=30):
+    """Получить историю цен на предмет (для графика)"""
+    conn = get_connection()
+    if not conn:
+        return []
+    
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute('''
+        SELECT 
+            DATE(transaction_date) as date,
+            AVG(price_per_unit) as avg_price,
+            MIN(price_per_unit) as min_price,
+            MAX(price_per_unit) as max_price,
+            SUM(quantity) as total_sold
+        FROM player_transactions
+        WHERE item_id = %s 
+        AND transaction_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
+        GROUP BY DATE(transaction_date)
+        ORDER BY date ASC
+    ''', (item_id, days))
+    history = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return history
+
+def get_all_items_list():
+    """Получить список всех предметов для выбора в фильтрах"""
+    conn = get_connection()
+    if not conn:
+        return []
+    
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id, name, category FROM items ORDER BY name")
+    items = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return items
 
 
 # ============ ЗАПУСК СОЗДАНИЯ ТАБЛИЦ ============

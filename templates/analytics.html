@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}Аналитика цен{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">📊 Аналитика цен</h1>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>Выберите предмет</h5>
+            </div>
+            <div class="card-body">
+                <select id="itemSelect" class="form-select mb-3">
+                    <option value="">Выберите предмет...</option>
+                    {% for item in items %}
+                    <option value="{{ item.id }}">{{ item.name }} ({{ item.category }})</option>
+                    {% endfor %}
+                </select>
+                <label class="form-label">Период (дней)</label>
+                <select id="daysSelect" class="form-select mb-3">
+                    <option value="7">Последние 7 дней</option>
+                    <option value="30" selected>Последние 30 дней</option>
+                    <option value="90">Последние 90 дней</option>
+                </select>
+                <button id="loadChartBtn" class="btn btn-primary w-100">Загрузить график</button>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5>Динамика цен</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="priceChart" width="400" height="300"></canvas>
+                <div id="noDataMsg" class="alert alert-info mt-3" style="display: none;">
+                    Нет данных о продажах этого предмета за выбранный период
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let chart = null;
+    
+    document.getElementById('loadChartBtn').addEventListener('click', async function() {
+        const itemId = document.getElementById('itemSelect').value;
+        const days = document.getElementById('daysSelect').value;
+        
+        if (!itemId) {
+            alert('Выберите предмет');
+            return;
+        }
+        
+        const response = await fetch(`/api/price_history/${itemId}?days=${days}`);
+        const data = await response.json();
+        
+        const noDataMsg = document.getElementById('noDataMsg');
+        const canvas = document.getElementById('priceChart');
+        
+        if (data.length === 0) {
+            noDataMsg.style.display = 'block';
+            canvas.style.display = 'none';
+            return;
+        }
+        
+        noDataMsg.style.display = 'none';
+        canvas.style.display = 'block';
+        
+        const labels = data.map(d => d.date);
+        const avgPrices = data.map(d => d.avg_price);
+        const minPrices = data.map(d => d.min_price);
+        const maxPrices = data.map(d => d.max_price);
+        
+        if (chart) {
+            chart.destroy();
+        }
+        
+        chart = new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Средняя цена',
+                        data: avgPrices,
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Минимальная цена',
+                        data: minPrices,
+                        borderColor: 'rgb(255, 99, 132)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Максимальная цена',
+                        data: maxPrices,
+                        borderColor: 'rgb(54, 162, 235)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                    title: {
+                        display: true,
+                        text: 'Динамика цен на предмет'
+                    }
+                },
+                scales: {
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Цена (монеты)'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Дата'
+                        }
+                    }
+                }
+            }
+        });
+    });
+</script>
+
+<div class="mt-3">
+    <a href="{{ url_for('catalog') }}" class="btn btn-secondary">← Назад</a>
+</div>
+{% endblock %}

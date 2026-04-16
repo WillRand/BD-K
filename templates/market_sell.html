@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Выставить предмет{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">📤 Выставить предмет на продажу</h1>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Выберите предмет из инвентаря</h5>
+            </div>
+            <div class="card-body">
+                {% if inventory %}
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Предмет</label>
+                        <select name="item_id" class="form-select" required>
+                            <option value="">Выберите...</option>
+                            {% for item in inventory %}
+                            <option value="{{ item.id }}">
+                                {{ item.name }} ({{ item.quantity }} шт.) - {{ item.price }} монет
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Количество</label>
+                        <input type="number" name="quantity" class="form-control" min="1" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Цена за штуку (монет)</label>
+                        <input type="number" name="price" class="form-control" min="1" required>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Выставить на продажу</button>
+                </form>
+                {% else %}
+                <div class="alert alert-warning">
+                    У вас нет предметов в инвентаре. 
+                    <a href="{{ url_for('catalog') }}">Купите что-нибудь в магазине!</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>📋 Ваши активные предложения</h5>
+            </div>
+            <div class="card-body">
+                {% if offers and offers|length > 0 %}
+                <div class="list-group">
+                    {% for offer in offers %}
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>{{ offer.name }}</strong>
+                                <span class="badge bg-primary ms-2">{{ offer.price_per_unit }} монет</span>
+                            </div>
+                            <span class="badge bg-secondary">{{ offer.quantity }} шт.</span>
+                        </div>
+                        <small class="text-muted">Выставлено: {{ offer.created_at.strftime('%Y-%m-%d %H:%M') if offer.created_at else 'Недавно' }}</small>
+                        <form method="POST" action="{{ url_for('market_cancel', offer_id=offer.id) }}" class="mt-2">
+                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Отменить продажу? Предметы вернутся в инвентарь.')">
+                                Отменить
+                            </button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted text-center">У вас нет активных предложений</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="mt-3">
+    <a href="{{ url_for('market') }}" class="btn btn-secondary">← Назад на рынок</a>
+</div>
+{% endblock %}

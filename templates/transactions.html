@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}История транзакций{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">📜 История транзакций</h1>
+
+{% if transactions %}
+<div class="table-responsive">
+    <table class="table table-bordered table-hover">
+        <thead class="table-dark">
+            <tr>
+                <th>Дата</th>
+                <th>Тип</th>
+                <th>Предмет</th>
+                <th>Количество</th>
+                <th>Цена за шт.</th>
+                <th>Сумма</th>
+                <th>Контрагент</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for tx in transactions %}
+            <tr>
+                <td>{{ tx.date.strftime('%Y-%m-%d %H:%M') if tx.date else 'Неизвестно' }}</td>
+                <td>
+                    {% if tx.type == 'purchase' %}
+                        <span class="badge bg-danger">Покупка у игрока</span>
+                    {% elif tx.type == 'sale' %}
+                        <span class="badge bg-success">Продажа игроку</span>
+                    {% else %}
+                        <span class="badge bg-primary">Покупка в магазине</span>
+                    {% endif %}
+                </td>
+                <td>{{ tx.item_name }}</td>
+                <td>{{ tx.quantity }} шт.</td>
+                <td>{{ tx.price_per_unit }} монет</td>
+                <td class="fw-bold">{{ tx.total_amount }} монет</td>
+                <td>{{ tx.other_party }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">У вас пока нет транзакций</div>
+{% endif %}
+
+<a href="{{ url_for('catalog') }}" class="btn btn-secondary">← Назад</a>
+{% endblock %}
