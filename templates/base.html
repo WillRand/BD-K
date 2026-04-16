@@ -25,14 +25,11 @@
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('catalog') }}">🛒 Каталог</a>
+                    </li>
                     {% if current_user.is_authenticated %}
-                        <li class="nav-item">
-                            <span class="nav-link">💰 Баланс: <span class="balance">{{ current_user.balance }}</span> монет</span>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('inventory') }}">📦 Инвентарь</a>
-                        </li>
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('market') }}">🏪 Рынок</a>
                         </li>
@@ -42,6 +39,20 @@
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('analytics') }}">📊 Аналитика</a>
                         </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('market') }}">🏪 Рынок</a>
+                        </li>
+                    {% endif %}
+                </ul>
+                <ul class="navbar-nav">
+                    {% if current_user.is_authenticated %}
+                        <li class="nav-item">
+                            <span class="nav-link">💰 Баланс: <span class="balance">{{ current_user.balance }}</span> монет</span>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('inventory') }}">📦 Инвентарь</a>
+                        </li>
                         {% if current_user.role == 'admin' %}
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('admin_panel') }}">⚙️ Админка</a>
@@ -49,6 +60,13 @@
                         {% endif %}
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('logout') }}">🚪 Выйти</a>
+                        </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('login') }}">🔐 Вход</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('register') }}">📝 Регистрация</a>
                         </li>
                     {% endif %}
                 </ul>
