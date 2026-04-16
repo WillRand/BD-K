@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Инвентари игроков{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">👥 Инвентари игроков</h1>
+
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>ID</th>
+                        <th>Игрок</th>
+                        <th>Роль</th>
+                        <th>Предмет</th>
+                        <th>Категория</th>
+                        <th>Количество</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in inventories %}
+                    <tr>
+                        <td>{{ item.id }}</td>
+                        <td>{{ item.username }}</td>
+                        <td>{{ item.role }}</td>
+                        <td>{{ item.item_name if item.item_name else '-' }}</td>
+                        <td>{{ item.category if item.category else '-' }}</td>
+                        <td>{{ item.quantity if item.quantity else '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<a href="{{ url_for('catalog') }}" class="btn btn-secondary mt-3">← Назад</a>
+{% endblock %}

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Просмотр БД{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">🗄️ Просмотр базы данных</h1>
+
+<div class="row">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-header">
+                <h5>Таблицы</h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group">
+                    {% for table in tables %}
+                    <a href="{{ url_for('admin_database', table=table) }}" class="list-group-item list-group-item-action {% if selected_table == table %}active{% endif %}">
+                        {{ table }}
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-9">
+        {% if selected_table %}
+        <div class="card">
+            <div class="card-header">
+                <h5>Таблица: {{ selected_table }}</h5>
+            </div>
+            <div class="card-body">
+                <ul class="nav nav-tabs mb-3">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-bs-toggle="tab" href="#data">Данные</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" href="#schema">Структура</a>
+                    </li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="data">
+                        {% if table_data %}
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm">
+                                <thead class="table-dark">
+                                    <tr>
+                                        {% for col in table_columns %}
+                                        <th>{{ col }}</th>
+                                        {% endfor %}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in table_data %}
+                                    <tr>
+                                        {% for col in table_columns %}
+                                        <td>{{ row[col] }}</td>
+                                        {% endfor %}
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <p class="text-muted">Таблица пуста</p>
+                        {% endif %}
+                    </div>
+                    <div class="tab-pane fade" id="schema">
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm">
+                                <thead class="table-dark">
+                                    <tr><th>Поле</th><th>Тип</th><th>Null</th><th>Ключ</th><th>По умолчанию</th><th>Extra</th></tr>
+                                </thead>
+                                <tbody>
+                                    {% for col in table_schema %}
+                                    <tr>
+                                        <td>{{ col.Field }}</td>
+                                        <td>{{ col.Type }}</td>
+                                        <td>{{ col.Null }}</td>
+                                        <td>{{ col.Key }}</td>
+                                        <td>{{ col.Default }}</td>
+                                        <td>{{ col.Extra }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="alert alert-info">Выберите таблицу слева для просмотра</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Создать пользователя{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">➕ Создать пользователя</h1>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Имя пользователя</label>
+                        <input type="text" name="username" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Пароль</label>
+                        <input type="password" name="password" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Роль</label>
+                        <select name="role" class="form-select">
+                            <option value="user">Игрок</option>
+                            <option value="moderator">Модератор</option>
+                            <option value="admin">Администратор</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Начальный баланс</label>
+                        <input type="number" name="balance" class="form-control" value="1000" required>
+                    </div>
+                    <button type="submit" class="btn btn-success">Создать</button>
+                    <a href="{{ url_for('admin_users') }}" class="btn btn-secondary">Отмена</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -53,10 +53,29 @@
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('inventory') }}">📦 Инвентарь</a>
                         </li>
+                        {% if current_user.role == 'moderator' %}
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                                    🛡️ Модерация
+                                </a>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="{{ url_for('moderator_inventories') }}">👥 Инвентари игроков</a></li>
+                                    <li><a class="dropdown-item" href="{{ url_for('moderator_stock') }}">📦 Управление складом</a></li>
+                                </ul>
+                            </li>
+                        {% endif %}
+
                         {% if current_user.role == 'admin' %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('admin_panel') }}">⚙️ Админка</a>
-                        </li>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                                    ⚙️ Админка
+                                </a>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="{{ url_for('admin_panel') }}">📊 Главная</a></li>
+                                    <li><a class="dropdown-item" href="{{ url_for('admin_users') }}">👥 Пользователи</a></li>
+                                    <li><a class="dropdown-item" href="{{ url_for('admin_database') }}">🗄️ Просмотр БД</a></li>
+                                </ul>
+                            </li>
                         {% endif %}
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('logout') }}">🚪 Выйти</a>

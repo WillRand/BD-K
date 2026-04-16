@@ -5,6 +5,10 @@
 {% block content %}
 <h1 class="mb-4">👥 Управление пользователями</h1>
 
+<div class="mb-3">
+    <a href="{{ url_for('admin_create_user') }}" class="btn btn-success">➕ Создать пользователя</a>
+</div>
+
 <div class="card">
     <div class="card-header">
         <h5>Список пользователей</h5>
@@ -30,6 +34,8 @@
                         <td>
                             {% if user.role == 'admin' %}
                                 <span class="badge bg-danger">Админ</span>
+                            {% elif user.role == 'moderator' %}
+                                <span class="badge bg-warning">Модератор</span>
                             {% else %}
                                 <span class="badge bg-secondary">Игрок</span>
                             {% endif %}
@@ -37,9 +43,18 @@
                         <td>{{ user.balance }} монет</td>
                         <td>{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else 'Неизвестно' }}</td>
                         <td>
-                            <a href="{{ url_for('admin_user_detail', user_id=user.id) }}" class="btn btn-sm btn-primary">
-                                📋 Детали
-                            </a>
+                            <a href="{{ url_for('admin_user_detail', user_id=user.id) }}" class="btn btn-sm btn-primary">📋 Детали</a>
+                            <a href="{{ url_for('admin_edit_user', user_id=user.id) }}" class="btn btn-sm btn-warning">✏️</a>
+                            {% if user.role != 'admin' and user.role != 'moderator' %}
+                            <form method="POST" action="{{ url_for('admin_assign_moderator', user_id=user.id) }}" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-info" onclick="return confirm('Назначить модератором?')">🛡️ Назначить</button>
+                            </form>
+                            {% endif %}
+                            {% if user.id != current_user.id %}
+                            <form method="POST" action="{{ url_for('admin_delete_user', user_id=user.id) }}" style="display: inline;" onsubmit="return confirm('Удалить пользователя?')">
+                                <button type="submit" class="btn btn-sm btn-danger">🗑️</button>
+                            </form>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}

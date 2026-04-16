@@ -8,10 +8,12 @@ from db import (
     get_all_users_with_details, update_user_balance, get_user_inventory_admin,
     get_user_by_id_admin, admin_remove_item_from_inventory,
     get_all_items_for_admin, admin_add_item_to_inventory_no_stock_check,
-    update_item_stock_admin,
-    create_market_offer, get_active_market_offers, buy_from_market,
+    update_item_stock_admin, create_market_offer, get_active_market_offers, buy_from_market,
     cancel_market_offer, get_player_transactions, get_item_price_history,
-    get_all_items_list
+    get_all_items_list, update_item_full, get_item_full, create_user_admin, update_user_admin,
+    delete_user_admin, get_all_tables, get_table_data, get_table_schema,
+    get_all_users_inventory, update_item_stock_moderator, assign_moderator_role,
+    is_moderator_or_admin
 )
 
 app = Flask(__name__)
@@ -421,6 +423,172 @@ def api_price_history(item_id):
     days = request.args.get('days', 30, type=int)
     history = get_item_price_history(item_id, days)
     return jsonify(history)
+
+
+# ============ АДМИН: УПРАВЛЕНИЕ ПРЕДМЕТАМИ ============
+
+@app.route('/admin/edit_item/<int:item_id>', methods=['GET', 'POST'])
+@login_required
+def admin_edit_item(item_id):
+    if current_user.role != 'admin':
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    item = get_item_full(item_id)
+    if not item:
+        flash('Предмет не найден', 'danger')
+        return redirect(url_for('admin_panel'))
+    
+    if request.method == 'POST':
+        name = request.form['name']
+        description = request.form['description']
+        price = int(request.form['price'])
+        category = request.form['category']
+        stock = int(request.form['stock'])
+        image_url = request.form.get('image_url', '')
+        
+        success, message = update_item_full(item_id, name, description, price, category, stock, image_url)
+        flash(message, 'success' if success else 'danger')
+        return redirect(url_for('admin_panel'))
+    
+    return render_template('admin_edit_item.html', item=item)
+
+# ============ АДМИН: УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ ============
+
+@app.route('/admin/create_user', methods=['GET', 'POST'])
+@login_required
+def admin_create_user():
+    if current_user.role != 'admin':
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        role = request.form['role']
+        balance = int(request.form['balance'])
+        
+        success, message = create_user_admin(username, password, role, balance)
+        flash(message, 'success' if success else 'danger')
+        return redirect(url_for('admin_users'))
+    
+    return render_template('admin_create_user.html')
+
+@app.route('/admin/edit_user/<int:user_id>', methods=['GET', 'POST'])
+@login_required
+def admin_edit_user(user_id):
+    if current_user.role != 'admin':
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    user = get_user_by_id_admin(user_id)
+    if not user:
+        flash('Пользователь не найден', 'danger')
+        return redirect(url_for('admin_users'))
+    
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        role = request.form.get('role')
+        balance = int(request.form.get('balance')) if request.form.get('balance') else None
+        
+        success, message = update_user_admin(user_id, username, password if password else None, role, balance)
+        flash(message, 'success' if success else 'danger')
+        return redirect(url_for('admin_users'))
+    
+    return render_template('admin_edit_user.html', user=user)
+
+@app.route('/admin/delete_user/<int:user_id>', methods=['POST'])
+@login_required
+def admin_delete_user(user_id):
+    if current_user.role != 'admin':
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    if user_id == current_user.id:
+        flash('Нельзя удалить самого себя', 'danger')
+        return redirect(url_for('admin_users'))
+    
+    success, message = delete_user_admin(user_id)
+    flash(message, 'success' if success else 'danger')
+    return redirect(url_for('admin_users'))
+
+@app.route('/admin/assign_moderator/<int:user_id>', methods=['POST'])
+@login_required
+def admin_assign_moderator(user_id):
+    if current_user.role != 'admin':
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    success, message = assign_moderator_role(user_id)
+    flash(message, 'success' if success else 'danger')
+    return redirect(url_for('admin_users'))
+
+# ============ АДМИН: ВИЗУАЛЬНЫЙ ПРОСМОТР БД ============
+
+@app.route('/admin/database')
+@login_required
+def admin_database():
+    if current_user.role != 'admin':
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    tables = get_all_tables()
+    selected_table = request.args.get('table', '')
+    table_data = []
+    table_columns = []
+    table_schema = []
+    
+    if selected_table and selected_table in tables:
+        table_columns, table_data = get_table_data(selected_table)
+        table_schema = get_table_schema(selected_table)
+    
+    return render_template('admin_database.html', 
+                         tables=tables, 
+                         selected_table=selected_table,
+                         table_columns=table_columns,
+                         table_data=table_data,
+                         table_schema=table_schema)
+
+# ============ МОДЕРАТОР: ПРОСМОТР ИНВЕНТАРЕЙ ============
+
+@app.route('/moderator/inventories')
+@login_required
+def moderator_inventories():
+    if current_user.role not in ['moderator', 'admin']:
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    inventories = get_all_users_inventory()
+    return render_template('moderator_inventories.html', inventories=inventories)
+
+@app.route('/moderator/stock')
+@login_required
+def moderator_stock():
+    if current_user.role not in ['moderator', 'admin']:
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    items = get_all_items_for_admin()
+    return render_template('moderator_stock.html', items=items)
+
+@app.route('/moderator/update_stock/<int:item_id>', methods=['POST'])
+@login_required
+def moderator_update_stock(item_id):
+    if current_user.role not in ['moderator', 'admin']:
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    new_stock = int(request.form.get('stock', 0))
+    success, message = update_item_stock_moderator(item_id, new_stock)
+    flash(message, 'success' if success else 'danger')
+    return redirect(url_for('moderator_stock'))
+
+
+
+
+
+# ===============================================================================
 
 if __name__ == '__main__':
     app.run(debug=True)

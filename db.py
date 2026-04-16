@@ -1030,6 +1030,244 @@ def get_all_items_list():
     return items
 
 
+# ============ УПРАВЛЕНИЕ ПРЕДМЕТАМИ (РАСШИРЕННОЕ) ============
+
+def update_item_full(item_id, name, description, price, category, stock, image_url):
+    """Полное обновление предмета (админ)"""
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения"
+    
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''
+            UPDATE items 
+            SET name = %s, description = %s, price = %s, category = %s, stock = %s, image_url = %s
+            WHERE id = %s
+        ''', (name, description, price, category, stock, image_url, item_id))
+        conn.commit()
+        return True, "Предмет обновлён"
+    except Error as e:
+        return False, f"Ошибка: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_item_full(item_id):
+    """Получить полную информацию о предмете"""
+    conn = get_connection()
+    if not conn:
+        return None
+    
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM items WHERE id = %s", (item_id,))
+    item = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return item
+
+# ============ УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ (РАСШИРЕННОЕ) ============
+
+def create_user_admin(username, password, role='user', balance=1000):
+    """Создать пользователя (админ)"""
+    import bcrypt
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения"
+    
+    cursor = conn.cursor()
+    try:
+        # Проверяем, существует ли пользователь
+        cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
+        if cursor.fetchone():
+            return False, "Пользователь уже существует"
+        
+        hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+        cursor.execute('''
+            INSERT INTO users (username, password_hash, role, balance)
+            VALUES (%s, %s, %s, %s)
+        ''', (username, hashed.decode(), role, balance))
+        conn.commit()
+        return True, f"Пользователь '{username}' создан"
+    except Error as e:
+        return False, f"Ошибка: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+
+def update_user_admin(user_id, username=None, password=None, role=None, balance=None):
+    """Обновить данные пользователя (админ)"""
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения"
+    
+    cursor = conn.cursor()
+    try:
+        updates = []
+        params = []
+        
+        if username:
+            updates.append("username = %s")
+            params.append(username)
+        if password:
+            import bcrypt
+            hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+            updates.append("password_hash = %s")
+            params.append(hashed.decode())
+        if role:
+            updates.append("role = %s")
+            params.append(role)
+        if balance is not None:
+            updates.append("balance = %s")
+            params.append(balance)
+        
+        if not updates:
+            return False, "Нет данных для обновления"
+        
+        params.append(user_id)
+        query = f"UPDATE users SET {', '.join(updates)} WHERE id = %s"
+        cursor.execute(query, params)
+        conn.commit()
+        return True, "Пользователь обновлён"
+    except Error as e:
+        return False, f"Ошибка: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+
+def delete_user_admin(user_id):
+    """Удалить пользователя (админ)"""
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения"
+    
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+        conn.commit()
+        return True, "Пользователь удалён"
+    except Error as e:
+        return False, f"Ошибка: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+
+# ============ ВИЗУАЛЬНЫЙ ПРОСМОТР БД ============
+
+def get_all_tables():
+    """Получить список всех таблиц в БД"""
+    conn = get_connection()
+    if not conn:
+        return []
+    
+    cursor = conn.cursor()
+    cursor.execute("SHOW TABLES")
+    tables = [row[0] for row in cursor.fetchall()]
+    cursor.close()
+    conn.close()
+    return tables
+
+def get_table_data(table_name):
+    """Получить данные из таблицы"""
+    conn = get_connection()
+    if not conn:
+        return [], []
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute(f"SELECT * FROM {table_name}")
+        data = cursor.fetchall()
+        # Получаем названия колонок
+        columns = list(data[0].keys()) if data else []
+        return columns, data
+    except Error as e:
+        return [], []
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_table_schema(table_name):
+    """Получить структуру таблицы"""
+    conn = get_connection()
+    if not conn:
+        return []
+    
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(f"DESCRIBE {table_name}")
+    schema = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return schema
+
+# ============ ФУНКЦИИ ДЛЯ МОДЕРАТОРА ============
+
+def is_moderator_or_admin(user_role):
+    """Проверка, является ли пользователь модератором или админом"""
+    return user_role in ['moderator', 'admin']
+
+def get_all_users_inventory():
+    """Получить инвентари всех пользователей (для модератора)"""
+    conn = get_connection()
+    if not conn:
+        return []
+    
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute('''
+        SELECT u.id, u.username, u.role, 
+               i.id as item_id, i.name as item_name, i.category, inv.quantity
+        FROM users u
+        LEFT JOIN inventory inv ON u.id = inv.user_id
+        LEFT JOIN items i ON inv.item_id = i.id
+        ORDER BY u.username, i.name
+    ''')
+    data = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return data
+
+def update_item_stock_moderator(item_id, new_stock):
+    """Модератор может только пополнять склад (увеличивать количество)"""
+    if new_stock < 0:
+        return False, "Количество не может быть отрицательным"
+    
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения"
+    
+    cursor = conn.cursor()
+    try:
+        # Модератор может только увеличивать или уменьшать до 0
+        cursor.execute("UPDATE items SET stock = %s WHERE id = %s", (new_stock, item_id))
+        conn.commit()
+        return True, f"Количество обновлено: {new_stock} шт."
+    except Error as e:
+        return False, f"Ошибка: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+
+def assign_moderator_role(user_id):
+    """Назначить пользователя модератором (только админ)"""
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения"
+    
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE users SET role = 'moderator' WHERE id = %s", (user_id,))
+        conn.commit()
+        return True, "Пользователь назначен модератором"
+    except Error as e:
+        return False, f"Ошибка: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+
+
+
+
+
+
 # ============ ЗАПУСК СОЗДАНИЯ ТАБЛИЦ ============
 
 if __name__ == "__main__":

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Редактировать пользователя{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">✏️ Редактировать пользователя: {{ user.username }}</h1>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Имя пользователя</label>
+                        <input type="text" name="username" class="form-control" value="{{ user.username }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Новый пароль (оставьте пустым, чтобы не менять)</label>
+                        <input type="password" name="password" class="form-control" placeholder="Новый пароль">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Роль</label>
+                        <select name="role" class="form-select">
+                            <option value="user" {% if user.role == 'user' %}selected{% endif %}>Игрок</option>
+                            <option value="moderator" {% if user.role == 'moderator' %}selected{% endif %}>Модератор</option>
+                            <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Администратор</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Баланс</label>
+                        <input type="number" name="balance" class="form-control" value="{{ user.balance }}" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                    <a href="{{ url_for('admin_users') }}" class="btn btn-secondary">Отмена</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

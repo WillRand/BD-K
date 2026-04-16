@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Редактировать предмет{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">✏️ Редактировать предмет</h1>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>{{ item.name }}</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Название</label>
+                        <input type="text" name="name" class="form-control" value="{{ item.name }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Описание</label>
+                        <textarea name="description" class="form-control" rows="3">{{ item.description }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Цена</label>
+                        <input type="number" name="price" class="form-control" value="{{ item.price }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Категория</label>
+                        <select name="category" class="form-select">
+                            <option value="weapon" {% if item.category == 'weapon' %}selected{% endif %}>Оружие</option>
+                            <option value="armor" {% if item.category == 'armor' %}selected{% endif %}>Броня</option>
+                            <option value="potion" {% if item.category == 'potion' %}selected{% endif %}>Зелье</option>
+                            <option value="cosmetic" {% if item.category == 'cosmetic' %}selected{% endif %}>Косметика</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Количество на складе</label>
+                        <input type="number" name="stock" class="form-control" value="{{ item.stock }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">URL изображения</label>
+                        <input type="text" name="image_url" class="form-control" value="{{ item.image_url }}">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Сохранить изменения</button>
+                    <a href="{{ url_for('admin_panel') }}" class="btn btn-secondary">Отмена</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
