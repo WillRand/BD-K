@@ -38,32 +38,32 @@
     
     <!-- Добавить предмет -->
     <div class="col-md-4 mb-4">
-        <div class="card">
-            <div class="card-header">
-                <h5>➕ Добавить предмет</h5>
-            </div>
-            <div class="card-body">
-                <form method="POST" action="{{ url_for('admin_add_item_to_user', user_id=user.id) }}">
-                    <div class="mb-2">
-                        <select name="item_id" class="form-select" required>
-                            <option value="">Выберите предмет</option>
-                            {% for item in all_items %}
-                                {% if item.stock > 0 %}
-                                <option value="{{ item.id }}">
-                                    {{ item.name }} - {{ item.price }} монет (в наличии: {{ item.stock }})
-                                </option>
-                                {% endif %}
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-2">
-                        <input type="number" name="quantity" value="1" min="1" class="form-control" required>
-                    </div>
-                    <button type="submit" class="btn btn-success w-100">Добавить предмет</button>
-                </form>
-            </div>
+    <div class="card">
+        <div class="card-header">
+            <h5>➕ Добавить предмет</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('admin_add_item_to_user_no_stock', user_id=user.id) }}">
+                <div class="mb-2">
+                    <select name="item_id" class="form-select" required>
+                        <option value="">Выберите предмет</option>
+                        {% for item in all_items %}
+                        <option value="{{ item.id }}" {% if item.stock == 0 %}style="color: orange;"{% endif %}>
+                            {{ item.name }} - {{ item.price }} монет 
+                            {% if item.stock == 0 %}(⏳ нет в продаже, но выдать можно){% else %}(в наличии: {{ item.stock }}){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <input type="number" name="quantity" value="1" min="1" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-success w-100">✨ Выдать предмет (независимо от склада)</button>
+            </form>
+            <small class="text-muted">Админ может выдать любой предмет, даже если его нет на складе</small>
         </div>
     </div>
+</div>
     
     <!-- Статистика инвентаря -->
     <div class="col-md-4 mb-4">

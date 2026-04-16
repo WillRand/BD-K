@@ -67,21 +67,21 @@ def init_db():
         )
     ''')
     
-    # Таблица для истории покупок/продаж (опционально, для отладки)
+    # Таблица для истории покупок/продаж 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS transactions (
             id INT AUTO_INCREMENT PRIMARY KEY,
             user_id INT NOT NULL,
             item_id INT NOT NULL,
-            transaction_type ENUM('purchase', 'sale') NOT NULL,
             quantity INT NOT NULL,
+            transaction_type ENUM('purchase', 'sale', 'admin_grant', 'admin_remove') NOT NULL,
             price_per_unit INT NOT NULL,
             total_amount INT NOT NULL,
             transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
         )
-    ''')
+''')
     
     cursor.close()
     conn.close()
@@ -144,19 +144,29 @@ def add_test_user():
 
 # ============ ФУНКЦИИ ДЛЯ РАБОТЫ С МАГАЗИНОМ ============
 
-def get_all_items(category=None, sort_by=None, order='ASC'):
-    """Получить все товары (только те, что есть в наличии)"""
+def get_all_items(category=None, sort_by=None, order='ASC', show_out_of_stock=True):
+    """
+    Получить все товары.
+    show_out_of_stock: если True - показывает все, если False - только в наличии
+    """
     conn = get_connection()
     if not conn:
         return []
     
-    cursor = conn.cursor(dictionary=True)  # <-- ВАЖНО: dictionary=True
-    query = "SELECT * FROM items WHERE stock > 0"
+    cursor = conn.cursor(dictionary=True)
+    query = "SELECT * FROM items"
     params = []
+    conditions = []
     
     if category and category != '':
-        query += " AND category = %s"
+        conditions.append("category = %s")
         params.append(category)
+    
+    if not show_out_of_stock:
+        conditions.append("stock > 0")
+    
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
     
     if sort_by in ['price', 'name', 'created_at']:
         query += f" ORDER BY {sort_by} {order}"
@@ -201,7 +211,10 @@ def purchase_item(user_id, item_id, quantity=1):
         
         if not item:
             return False, "Предмет не найден"
-        
+            
+        if item['stock'] == 0:
+            return False, "Товар временно отсутствует (ожидается поставка)"
+
         if item['stock'] < quantity:
             return False, f"Недостаточно товара. В наличии: {item['stock']}"
         
@@ -598,17 +611,88 @@ def admin_add_item_to_inventory(user_id, item_id, quantity=1):
         conn.close()
 
 def get_all_items_for_admin():
-    """Получить все предметы для админ-панели (включая те, что не в наличии)"""
+    """Получить все предметы для админ-панели (включая все, без фильтров)"""
     conn = get_connection()
     if not conn:
         return []
     
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM items ORDER BY id")
+    cursor.execute("SELECT *, CASE WHEN stock = 0 THEN 'out' WHEN stock <= 5 THEN 'low' ELSE 'ok' END as stock_status FROM items ORDER BY id")
     items = cursor.fetchall()
     cursor.close()
     conn.close()
     return items
+
+
+def admin_add_item_to_inventory_no_stock_check(user_id, item_id, quantity=1):
+    """
+    Добавить предмет в инвентарь пользователя (БЕЗ проверки склада).
+    Используется админом.
+    """
+    if quantity <= 0:
+        return False, "Количество должно быть положительным"
+    
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения"
+    
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Получаем информацию о предмете (даже если stock = 0)
+        cursor.execute("SELECT id, name, price FROM items WHERE id = %s", (item_id,))
+        item = cursor.fetchone()
+        
+        if not item:
+            return False, "Предмет не найден"
+        
+        # Добавляем в инвентарь
+        cursor.execute('''
+            INSERT INTO inventory (user_id, item_id, quantity)
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE quantity = quantity + %s
+        ''', (user_id, item_id, quantity, quantity))
+        
+        # НЕ уменьшаем склад! (это главное отличие)
+        
+        # Записываем транзакцию (особый тип для админ-выдачи)
+        cursor.execute('''
+             INSERT INTO transactions (user_id, item_id, transaction_type, quantity, price_per_unit, total_amount)
+            VALUES (%s, %s, 'admin_grant', %s, %s, %s)
+        ''', (user_id, item_id, quantity, 0, 0))
+        
+        conn.commit()
+        return True, f"Предмет '{item['name']}' (x{quantity}) выдан пользователю (независимо от склада)"
+    except Error as e:
+        conn.rollback()
+        return False, f"Ошибка: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+
+def update_item_stock_admin(item_id, new_stock):
+    """Изменить количество товара на складе (админ)"""
+    if new_stock < 0:
+        return False, "Количество не может быть отрицательным"
+    
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения"
+    
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE items SET stock = %s WHERE id = %s", (new_stock, item_id))
+        conn.commit()
+        
+        if new_stock == 0:
+            return True, "Товар помечен как 'Ожидается поставка'"
+        else:
+            return True, f"Количество обновлено: {new_stock} шт."
+    except Error as e:
+        return False, f"Ошибка: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+
 
 # ============ ЗАПУСК СОЗДАНИЯ ТАБЛИЦ ============
 

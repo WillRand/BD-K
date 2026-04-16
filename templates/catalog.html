@@ -30,6 +30,14 @@
         <label class="form-label">Поиск</label>
         <input type="text" id="searchInput" class="form-control" placeholder="Название предмета...">
     </div>
+    <div class="col-md-2">
+        <label class="form-label">Показывать</label>
+        <select id="stockFilter" class="form-select">
+            <option value="all">Все товары</option>
+            <option value="in_stock">Только в наличии</option>
+            <option value="out_stock">Ожидают поставку</option>
+        </select>
+    </div>
 </div>
 
 <!-- Сетка товаров -->
@@ -38,8 +46,9 @@
     <div class="col-md-3 mb-4 item-card" 
          data-name="{{ item.name.lower() }}"
          data-category="{{ item.category }}"
-         data-price="{{ item.price }}">
-        <div class="card h-100">
+         data-price="{{ item.price }}"
+         data-stock="{{ item.stock }}">
+        <div class="card h-100 {% if item.stock == 0 %}opacity-75{% endif %}">
             <div class="card-img-top text-center p-3 bg-light">
                 <span style="font-size: 4rem;">
                     {% if item.category == 'weapon' %}⚔️
@@ -53,15 +62,21 @@
                 <h5 class="card-title">{{ item.name }}</h5>
                 <p class="card-text">{{ item.description[:80] }}</p>
                 <p class="price">{{ item.price }} монет</p>
-                <p class="{% if item.stock <= 5 %}stock-low{% else %}stock-normal{% endif %}">
-                    📦 В наличии: {{ item.stock }} шт.
-                </p>
-                <form method="POST" action="{{ url_for('buy', item_id=item.id) }}" class="d-flex gap-2">
-                    <input type="number" name="quantity" value="1" min="1" max="{{ item.stock }}" class="form-control w-50">
-                    <button type="submit" class="btn btn-success flex-grow-1" {% if not current_user.is_authenticated or item.stock == 0 %}disabled{% endif %}>
-                        Купить
-                    </button>
-                </form>
+                
+                {% if item.stock == 0 %}
+                    <p class="text-warning fw-bold">⏳ Ожидается поставка</p>
+                    <button class="btn btn-secondary w-100" disabled>Нет в наличии</button>
+                {% else %}
+                    <p class="{% if item.stock <= 5 %}stock-low{% else %}stock-normal{% endif %}">
+                        📦 В наличии: {{ item.stock }} шт.
+                    </p>
+                    <form method="POST" action="{{ url_for('buy', item_id=item.id) }}" class="d-flex gap-2">
+                        <input type="number" name="quantity" value="1" min="1" max="{{ item.stock }}" class="form-control w-50">
+                        <button type="submit" class="btn btn-success flex-grow-1" {% if not current_user.is_authenticated %}disabled{% endif %}>
+                            Купить
+                        </button>
+                    </form>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -72,20 +87,39 @@
     const filterCategory = document.getElementById('categoryFilter');
     const sortSelect = document.getElementById('sortSelect');
     const searchInput = document.getElementById('searchInput');
+    const stockFilter = document.getElementById('stockFilter');
     
+    // Функция для получения всех карточек (даже скрытых)
+    function getAllCards() {
+        return Array.from(document.querySelectorAll('.item-card'));
+    }
+    
+    // Основная функция фильтрации и сортировки
     function filterAndSort() {
-        let items = Array.from(document.querySelectorAll('.item-card'));
+        const container = document.getElementById('itemsContainer');
         const category = filterCategory.value;
         const search = searchInput.value.toLowerCase();
+        const stockOption = stockFilter.value;
         
-        items = items.filter(item => {
-            const matchCategory = !category || item.dataset.category === category;
-            const matchSearch = !search || item.dataset.name.includes(search);
-            return matchCategory && matchSearch;
+        // Получаем все карточки (включая скрытые)
+        let allCards = getAllCards();
+        
+        // Фильтрация
+        let filteredCards = allCards.filter(card => {
+            const matchCategory = !category || card.dataset.category === category;
+            const matchSearch = !search || card.dataset.name.includes(search);
+            
+            const stock = parseInt(card.dataset.stock);
+            let matchStock = true;
+            if (stockOption === 'in_stock') matchStock = stock > 0;
+            else if (stockOption === 'out_stock') matchStock = stock === 0;
+            
+            return matchCategory && matchSearch && matchStock;
         });
         
+        // Сортировка
         const [sortBy, order] = sortSelect.value.split('_');
-        items.sort((a, b) => {
+        filteredCards.sort((a, b) => {
             let valA, valB;
             if (sortBy === 'name') {
                 valA = a.dataset.name;
@@ -94,17 +128,34 @@
                 valA = parseInt(a.dataset.price);
                 valB = parseInt(b.dataset.price);
             }
-            if (order === 'ASC') return valA > valB ? 1 : -1;
-            else return valA < valB ? 1 : -1;
+            if (order === 'ASC') {
+                return valA > valB ? 1 : -1;
+            } else {
+                return valA < valB ? 1 : -1;
+            }
         });
         
-        const container = document.getElementById('itemsContainer');
+        // Очищаем контейнер
         container.innerHTML = '';
-        items.forEach(item => container.appendChild(item));
+        
+        // Добавляем отфильтрованные и отсортированные карточки
+        filteredCards.forEach(card => {
+            container.appendChild(card);
+        });
+        
+        // Показываем сообщение, если ничего не найдено
+        if (filteredCards.length === 0) {
+            container.innerHTML = '<div class="col-12"><div class="alert alert-info text-center">Ничего не найдено</div></div>';
+        }
     }
     
+    // Применяем фильтры при любом изменении
     filterCategory.addEventListener('change', filterAndSort);
     sortSelect.addEventListener('change', filterAndSort);
     searchInput.addEventListener('input', filterAndSort);
+    stockFilter.addEventListener('change', filterAndSort);
+    
+    // Запускаем фильтрацию при загрузке страницы (на всякий случай)
+    document.addEventListener('DOMContentLoaded', filterAndSort);
 </script>
 {% endblock %}

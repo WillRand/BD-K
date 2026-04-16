@@ -6,8 +6,9 @@ from db import (
     get_user_inventory, get_user_balance, add_item, update_item_stock,
     delete_item, get_all_users, get_low_stock_items,
     get_all_users_with_details, update_user_balance, get_user_inventory_admin,
-    get_user_by_id_admin, admin_remove_item_from_inventory, admin_add_item_to_inventory,
-    get_all_items_for_admin
+    get_user_by_id_admin, admin_remove_item_from_inventory,
+    get_all_items_for_admin, admin_add_item_to_inventory_no_stock_check,
+    update_item_stock_admin
 )
 
 app = Flask(__name__)
@@ -123,7 +124,8 @@ def catalog():
     sort_by = request.args.get('sort_by', 'name')
     order = request.args.get('order', 'ASC')
     
-    items = get_all_items(category=category, sort_by=sort_by, order=order)
+    # Показываем ВСЕ товары, даже с нулевым запасом
+    items = get_all_items(category=category, sort_by=sort_by, order=order, show_out_of_stock=True)
     return render_template('catalog.html', items=items)
 
 # ============ ПОКУПКА ============
@@ -191,8 +193,8 @@ def admin_update_stock(item_id):
         flash('Доступ запрещён', 'danger')
         return redirect(url_for('catalog'))
     
-    new_stock = int(request.form['stock'])
-    success, message = update_item_stock(item_id, new_stock)
+    new_stock = int(request.form.get('stock', 0))
+    success, message = update_item_stock_admin(item_id, new_stock)
     flash(message, 'success' if success else 'danger')
     
     return redirect(url_for('admin_panel'))
@@ -295,7 +297,19 @@ def admin_add_item_to_user(user_id):
     
     return redirect(url_for('admin_user_detail', user_id=user_id))
 
-
+@app.route('/admin/user/<int:user_id>/add_item_no_stock', methods=['POST'])
+@login_required
+def admin_add_item_to_user_no_stock(user_id):
+    if current_user.role != 'admin':
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    item_id = int(request.form.get('item_id'))
+    quantity = int(request.form.get('quantity', 1))
+    success, message = admin_add_item_to_inventory_no_stock_check(user_id, item_id, quantity)
+    flash(message, 'success' if success else 'danger')
+    
+    return redirect(url_for('admin_user_detail', user_id=user_id))
 
 if __name__ == '__main__':
     app.run(debug=True)
