@@ -1,0 +1,28 @@
+[
+    {
+        "name": "Импортный меч",
+        "description": "Меч, добавленный через импорт",
+        "price": 500,
+        "category": "weapon",
+        "rarity": "rare",
+        "level_required": 5,
+        "slot": "weapon",
+        "durability": 100,
+        "bonus_stats": "{\"strength\": 10}",
+        "stock": 15,
+        "image_url": ""
+    },
+    {
+        "name": "Импортный щит",
+        "description": "Щит, добавленный через импорт",
+        "price": 300,
+        "category": "armor",
+        "rarity": "common",
+        "level_required": 3,
+        "slot": "body",
+        "durability": 120,
+        "bonus_stats": "{\"defense\": 8}",
+        "stock": 20,
+        "image_url": ""
+    }
+]

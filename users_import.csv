@@ -1,0 +1,4 @@
+username,password,role,balance
+import_user1,pass123,user,1500
+import_user2,qwerty,user,2000
+import_moderator,mod123,moderator,5000

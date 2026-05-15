@@ -31,6 +31,9 @@
                     </li><li class="nav-item">
                         <a class="nav-link" href="{{ url_for('catalog') }}">🛒 Каталог</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('advanced_search_page') }}">🔍 Расширенный поиск</a>
+                    </li>
                     {% if current_user.is_authenticated %}
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('market') }}">🏪 Рынок</a>
@@ -117,4 +120,14 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     {% block extra_js %}{% endblock %}
 </body>
+<style>
+    .bg-purple {
+        background-color: #8b5cf6 !important;
+        color: white;
+    }
+    .rarity-common { border-left: 4px solid #6c757d; }
+    .rarity-rare { border-left: 4px solid #0d6efd; }
+    .rarity-epic { border-left: 4px solid #8b5cf6; }
+    .rarity-legendary { border-left: 4px solid #ffc107; }
+</style>
 </html>

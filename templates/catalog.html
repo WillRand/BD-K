@@ -30,7 +30,7 @@
         <label class="form-label">🔍 Быстрый поиск по названию</label>
         <div class="input-group">
             <input type="text" id="quickSearchInput" class="form-control" placeholder="Введите название предмета...">
-            <button id="clearSearchBtn" class="btn btn-outline-secondary" type="button">✖️ Очистить</button>
+            <button id="clearSearchBtn " class="btn btn-outline-secondary" type="button">✖️ Очистить</button>
         </div>
         <small class="text-muted">Поиск работает мгновенно, без перезагрузки страницы</small>
     </div>
@@ -44,7 +44,7 @@
     </div>
 </div>
 
-<!-- Сетка товаров (оригинальные карточки) -->
+<!-- Сетка товаров ( карточки) -->
 <div class="row" id="itemsContainer">
     {% for item in items %}
     <div class="col-md-3 mb-4 item-card" 
@@ -52,7 +52,7 @@
          data-category="{{ item.category }}"
          data-price="{{ item.price }}"
          data-stock="{{ item.stock }}">
-        <div class="card h-100 {% if item.stock == 0 %}opacity-75{% endif %}">
+        <div class="card h-100">
             <div class="card-img-top text-center p-3 bg-light">
                 <span style="font-size: 4rem;">
                     {% if item.category == 'weapon' %}⚔️
@@ -63,24 +63,63 @@
                 </span>
             </div>
             <div class="card-body">
-                <h5 class="card-title">{{ item.name }}</h5>
-                <p class="card-text">{{ item.description[:80] }}</p>
-                <p class="price">{{ item.price }} монет</p>
+                <div class="d-flex justify-content-between align-items-start">
+                    <h5 class="card-title">{{ item.name }}</h5>
+                    <span class="badge 
+                        {% if item.rarity == 'common' %}bg-secondary
+                        {% elif item.rarity == 'rare' %}bg-primary
+                        {% elif item.rarity == 'epic' %}bg-purple
+                        {% else %}bg-warning text-dark{% endif %}">
+                        {% if item.rarity == 'common' %}📦
+                        {% elif item.rarity == 'rare' %}🔵
+                        {% elif item.rarity == 'epic' %}🟣
+                        {% else %}🟠{% endif %}
+                    </span>
+                </div>
+                <p class="card-text small">{{ item.description[:60] }}</p>
                 
-                {% if item.stock == 0 %}
-                    <p class="text-warning fw-bold">⏳ Ожидается поставка</p>
-                    <button class="btn btn-secondary w-100" disabled>Нет в наличии</button>
-                {% else %}
-                    <p class="{% if item.stock <= 5 %}text-danger{% else %}text-success{% endif %}">
-                        📦 В наличии: {{ item.stock }} шт.
-                    </p>
-                    <form method="POST" action="{{ url_for('buy', item_id=item.id) }}" class="d-flex gap-2">
-                        <input type="number" name="quantity" value="1" min="1" max="{{ item.stock }}" class="form-control w-50">
-                        <button type="submit" class="btn btn-success flex-grow-1" {% if not current_user.is_authenticated %}disabled{% endif %}>
-                            Купить
-                        </button>
-                    </form>
+                <!-- Новые параметры -->
+                <div class="row small mb-2">
+                    <div class="col-6">
+                        <strong>💰 Цена:</strong> {{ item.price }}
+                    </div>
+                    <div class="col-6">
+                        <strong>⚙️ Уровень:</strong> {{ item.level_required }}
+                    </div>
+                    <div class="col-6">
+                        <strong>💪 Прочность:</strong> {{ item.durability }}
+                    </div>
+                    <div class="col-6">
+                        <strong>📦 Слот:</strong> 
+                        {% if item.slot == 'weapon' %}⚔️
+                        {% elif item.slot == 'head' %}🪖
+                        {% elif item.slot == 'body' %}🛡️
+                        {% elif item.slot == 'accessory' %}💍
+                        {% else %}📦{% endif %}
+                    </div>
+                </div>
+                
+                <!-- Бонусы -->
+                {% if item.bonus_stats %}
+                <div class="small text-success">
+                    <strong>🎁 Бонусы:</strong>
+                    {% set bonuses = item.bonus_stats|from_json %}
+                    {% for key, value in bonuses.items() %}
+                    +{{ value }} {{ key }}
+                    {% endfor %}
+                </div>
                 {% endif %}
+                
+                <p class="{% if item.stock <= 5 %}text-danger{% else %}text-success{% endif %} mt-2">
+                    📦 В наличии: {{ item.stock }} шт.
+                </p>
+                
+                <form method="POST" action="{{ url_for('buy', item_id=item.id) }}" class="d-flex gap-2">
+                    <input type="number" name="quantity" value="1" min="1" max="{{ item.stock }}" class="form-control w-50">
+                    <button type="submit" class="btn btn-success flex-grow-1" {% if not current_user.is_authenticated or item.stock == 0 %}disabled{% endif %}>
+                        Купить
+                    </button>
+                </form>
             </div>
         </div>
     </div>

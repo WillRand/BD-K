@@ -35,6 +35,38 @@
                         </select>
                     </div>
                     <div class="mb-3">
+                        <label class="form-label">Редкость</label>
+                        <select name="rarity" class="form-select">
+                            <option value="common" {% if item.rarity == 'common' %}selected{% endif %}>📦 Обычный</option>
+                            <option value="rare" {% if item.rarity == 'rare' %}selected{% endif %}>🔵 Редкий</option>
+                            <option value="epic" {% if item.rarity == 'epic' %}selected{% endif %}>🟣 Эпический</option>
+                            <option value="legendary" {% if item.rarity == 'legendary' %}selected{% endif %}>🟠 Легендарный</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Требуемый уровень</label>
+                        <input type="number" name="level_required" class="form-control" value="{{ item.level_required }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Слот экипировки</label>
+                        <select name="slot" class="form-select">
+                            <option value="weapon" {% if item.slot == 'weapon' %}selected{% endif %}>⚔️ Оружие</option>
+                            <option value="head" {% if item.slot == 'head' %}selected{% endif %}>🪖 Голова</option>
+                            <option value="body" {% if item.slot == 'body' %}selected{% endif %}>🛡️ Тело</option>
+                            <option value="accessory" {% if item.slot == 'accessory' %}selected{% endif %}>💍 Аксессуар</option>
+                            <option value="other" {% if item.slot == 'other' %}selected{% endif %}>📦 Другое</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Прочность</label>
+                        <input type="number" name="durability" class="form-control" value="{{ item.durability }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Бонусные характеристики (JSON)</label>
+                        <textarea name="bonus_stats" class="form-control" rows="2">{{ item.bonus_stats or '' }}</textarea>
+                        <small class="text-muted">Пример: {"strength": 5, "agility": 3, "intelligence": 2}</small>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label">Количество на складе</label>
                         <input type="number" name="stock" class="form-control" value="{{ item.stock }}" required>
                     </div>

@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}Расширенный поиск{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">🔍 Расширенный поиск предметов</h1>
+
+<!-- Форма расширенного поиска -->
+<form method="GET" action="{{ url_for('advanced_search_page') }}" class="card mb-4">
+    <div class="card-header">
+        <h5>Параметры поиска</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Название предмета</label>
+                <input type="text" name="name" class="form-control" value="{{ filters.name }}" placeholder="Частичное совпадение">
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Категория</label>
+                <select name="category" class="form-select">
+                    <option value="">Все</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat }}" {% if filters.category == cat %}selected{% endif %}>
+                        {% if cat == 'weapon' %}⚔️ Оружие
+                        {% elif cat == 'armor' %}🛡️ Броня
+                        {% elif cat == 'potion' %}🧪 Зелья
+                        {% else %}✨ Косметика
+                        {% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Редкость</label>
+                <select name="rarity" class="form-select">
+                    <option value="">Все</option>
+                    {% for r in rarities %}
+                    <option value="{{ r }}" {% if filters.rarity == r %}selected{% endif %}>
+                        {% if r == 'common' %}📦 Обычный
+                        {% elif r == 'rare' %}🔵 Редкий
+                        {% elif r == 'epic' %}🟣 Эпический
+                        {% else %}🟠 Легендарный
+                        {% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Слот экипировки</label>
+                <select name="slot" class="form-select">
+                    <option value="">Все</option>
+                    {% for s in slots %}
+                    <option value="{{ s }}" {% if filters.slot == s %}selected{% endif %}>
+                        {% if s == 'weapon' %}⚔️ Оружие
+                        {% elif s == 'head' %}🪖 Голова
+                        {% elif s == 'body' %}🛡️ Тело
+                        {% elif s == 'accessory' %}💍 Аксессуар
+                        {% else %}📦 Другое
+                        {% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Наличие</label>
+                <select name="stock_filter" class="form-select">
+                    <option value="">Все товары</option>
+                    <option value="in_stock" {% if filters.stock_filter == 'in_stock' %}selected{% endif %}>Только в наличии</option>
+                    <option value="out_stock" {% if filters.stock_filter == 'out_stock' %}selected{% endif %}>Ожидают поставку</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-3 mb-3">
+                <label class="form-label">Цена от</label>
+                <input type="number" name="price_min" class="form-control" value="{{ filters.price_min }}" placeholder="0">
+            </div>
+            <div class="col-md-3 mb-3">
+                <label class="form-label">Цена до</label>
+                <input type="number" name="price_max" class="form-control" value="{{ filters.price_max }}" placeholder="10000">
+            </div>
+            <div class="col-md-3 mb-3">
+                <label class="form-label">Уровень от</label>
+                <input type="number" name="level_min" class="form-control" value="{{ filters.level_min }}" placeholder="1">
+            </div>
+            <div class="col-md-3 mb-3">
+                <label class="form-label">Уровень до</label>
+                <input type="number" name="level_max" class="form-control" value="{{ filters.level_max }}" placeholder="100">
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Сортировка по</label>
+                <select name="sort_by" class="form-select">
+                    <option value="name" {% if filters.sort_by == 'name' %}selected{% endif %}>Названию</option>
+                    <option value="price" {% if filters.sort_by == 'price' %}selected{% endif %}>Цене</option>
+                    <option value="level_required" {% if filters.sort_by == 'level_required' %}selected{% endif %}>Уровню</option>
+                </select>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Порядок</label>
+                <select name="order" class="form-select">
+                    <option value="ASC" {% if filters.order == 'ASC' %}selected{% endif %}>По возрастанию</option>
+                    <option value="DESC" {% if filters.order == 'DESC' %}selected{% endif %}>По убыванию</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    <div class="card-footer">
+        <button type="submit" class="btn btn-primary">🔍 Найти</button>
+        <a href="{{ url_for('advanced_search_page') }}" class="btn btn-secondary">Сбросить</a>
+    </div>
+</form>
+
+<!-- Результаты поиска -->
+<h3>Результаты поиска ({{ items|length }} предметов)</h3>
+
+{% if items %}
+<div class="row">
+    {% for item in items %}
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <h5 class="card-title">{{ item.name }}</h5>
+                    <span class="badge 
+                        {% if item.rarity == 'common' %}bg-secondary
+                        {% elif item.rarity == 'rare' %}bg-primary
+                        {% elif item.rarity == 'epic' %}bg-purple
+                        {% else %}bg-warning text-dark{% endif %}">
+                        {% if item.rarity == 'common' %}📦 Обычный
+                        {% elif item.rarity == 'rare' %}🔵 Редкий
+                        {% elif item.rarity == 'epic' %}🟣 Эпический
+                        {% else %}🟠 Легендарный{% endif %}
+                    </span>
+                </div>
+                <p class="card-text small text-muted mt-2">{{ item.description[:100] }}</p>
+                
+                <div class="mt-2">
+                    <div class="row small">
+                        <div class="col-6">
+                            <strong>💰 Цена:</strong> {{ item.price }} монет
+                        </div>
+                        <div class="col-6">
+                            <strong>📦 В наличии:</strong> {{ item.stock }} шт.
+                        </div>
+                        <div class="col-6">
+                            <strong>⚙️ Требуемый уровень:</strong> {{ item.level_required }}
+                        </div>
+                        <div class="col-6">
+                            <strong>💪 Прочность:</strong> {{ item.durability }}
+                        </div>
+                    </div>
+                </div>
+                
+                {% if item.bonus_stats %}
+                <div class="mt-2 small">
+                    <strong>🎁 Бонусы:</strong>
+                    <ul class="mb-0">
+                        {% set bonuses = item.bonus_stats|from_json %}
+                        {% for key, value in bonuses.items() %}
+                        <li>{{ key }}: +{{ value }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+                
+                <div class="mt-3">
+                    <form method="POST" action="{{ url_for('buy', item_id=item.id) }}" class="d-flex gap-2">
+                        <input type="number" name="quantity" value="1" min="1" max="{{ item.stock }}" class="form-control w-50">
+                        <button type="submit" class="btn btn-success flex-grow-1" {% if not current_user.is_authenticated or item.stock == 0 %}disabled{% endif %}>
+                            Купить
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info">Ничего не найдено. Попробуйте изменить параметры поиска.</div>
+{% endif %}
+
+<div class="mt-3">
+    <a href="{{ url_for('catalog') }}" class="btn btn-secondary">← Назад в каталог</a>
+</div>
+{% endblock %}

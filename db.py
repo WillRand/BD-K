@@ -62,6 +62,11 @@ def init_db():
             description TEXT,
             price INT NOT NULL CHECK (price >= 0),
             category VARCHAR(50),
+            rarity VARCHAR(50) DEFAULT 'common',
+            level_required INT DEFAULT 1,
+            slot VARCHAR(50) DEFAULT 'other',
+            durability INT DEFAULT 100,
+            bonus_stats TEXT,
             stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0),
             image_url VARCHAR(500),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -114,22 +119,30 @@ def init_db():
         )
     ''')
     
-    # Таблица для сделок между игроками
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS player_transactions (
             id INT AUTO_INCREMENT PRIMARY KEY,
             offer_id INT NOT NULL,
-            buyer_id INT NOT NULL,
-            seller_id INT NOT NULL,
             item_id INT NOT NULL,
             quantity INT NOT NULL,
             price_per_unit INT NOT NULL,
             total_amount INT NOT NULL,
             transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (offer_id) REFERENCES market_offers(id) ON DELETE CASCADE,
-            FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE,
-            FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+        )
+    ''')
+    
+    # Таблица участников сделок
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS transaction_participants (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            transaction_id INT NOT NULL,
+            user_id INT NOT NULL,
+            role ENUM('buyer', 'seller') NOT NULL,
+            FOREIGN KEY (transaction_id) REFERENCES player_transactions(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE KEY unique_participant (transaction_id, user_id)
         )
     ''')
 
@@ -180,23 +193,22 @@ def add_test_items():
     
     cursor = conn.cursor()
     
-    # Проверяем, есть ли уже предметы
     cursor.execute("SELECT COUNT(*) FROM items")
     count = cursor.fetchone()[0]
     
     if count == 0:
         items = [
-            ("Меч огня", "Наносит 50-70 урона", 500, "weapon", 10, "/static/images/sword.png"),
-            ("Железный щит", "Блокирует 30% урона", 300, "armor", 15, "/static/images/shield.png"),
-            ("Зелье здоровья", "Восстанавливает 50 HP", 100, "potion", 50, "/static/images/potion.png"),
-            ("Плащ невидимости", "Скрывает на 10 секунд", 800, "cosmetic", 5, "/static/images/cloak.png"),
-            ("Магический посох", "Увеличивает магический урон", 650, "weapon", 8, "/static/images/staff.png"),
-            ("Кожаная броня", "Защита +15", 250, "armor", 20, "/static/images/leather.png"),
+            ("Меч огня", "Наносит 50-70 урона", 500, "weapon", "epic", 10, "weapon", 100, '{"strength": 8, "fire_damage": 15}', 10, "/static/images/sword.png"),
+            ("Железный щит", "Блокирует 30% урона", 300, "armor", "rare", 5, "body", 120, '{"defense": 25}', 15, "/static/images/shield.png"),
+            ("Зелье здоровья", "Восстанавливает 50 HP", 100, "potion", "common", 1, "other", 1, '{"heal": 50}', 50, "/static/images/potion.png"),
+            ("Плащ невидимости", "Скрывает на 10 секунд", 800, "cosmetic", "legendary", 20, "body", 50, '{"stealth": 30, "speed": 10}', 5, "/static/images/cloak.png"),
+            ("Магический посох", "Увеличивает магический урон", 650, "weapon", "epic", 12, "weapon", 90, '{"intelligence": 12, "mana": 50}', 8, "/static/images/staff.png"),
+            ("Кожаная броня", "Защита +15", 250, "armor", "common", 3, "body", 80, '{"defense": 15, "agility": 3}', 20, "/static/images/leather.png"),
         ]
         
         cursor.executemany('''
-            INSERT INTO items (name, description, price, category, stock, image_url)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO items (name, description, price, category, rarity, level_required, slot, durability, bonus_stats, stock, image_url)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ''', items)
         print(f"Добавлено {len(items)} тестовых предметов")
     
@@ -858,7 +870,7 @@ def get_active_market_offers(exclude_user_id=None, item_filter=None):
     return offers
 
 def buy_from_market(buyer_id, offer_id, quantity):
-    """Купить предмет с рынка"""
+    """Купить предмет с рынка (P2P-сделка) - обновлённая версия"""
     conn = get_connection()
     if not conn:
         return False, "Ошибка подключения"
@@ -892,7 +904,7 @@ def buy_from_market(buyer_id, offer_id, quantity):
         
         # Проверяем, что покупатель не продавец
         if buyer_id == offer['seller_id']:
-            return False, "Нельзя купить свой же товар"
+            return False, "Нельзя приобрести свой же товар"
         
         # Переводим деньги
         cursor.execute("UPDATE users SET balance = balance - %s WHERE id = %s", (total_cost, buyer_id))
@@ -911,14 +923,25 @@ def buy_from_market(buyer_id, offer_id, quantity):
             ON DUPLICATE KEY UPDATE quantity = quantity + %s
         ''', (buyer_id, offer['item_id'], quantity, quantity))
         
-        # Записываем сделку
+        # ============ НОВАЯ ЧАСТЬ: запись сделки ============
+        # 1. Создаём запись о сделке
         cursor.execute('''
-            INSERT INTO player_transactions (offer_id, buyer_id, seller_id, item_id, quantity, price_per_unit, total_amount)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        ''', (offer_id, buyer_id, offer['seller_id'], offer['item_id'], quantity, offer['price_per_unit'], total_cost))
+            INSERT INTO player_transactions (offer_id, item_id, quantity, price_per_unit, total_amount)
+            VALUES (%s, %s, %s, %s, %s)
+        ''', (offer_id, offer['item_id'], quantity, offer['price_per_unit'], total_cost))
+        
+        transaction_id = cursor.lastrowid
+        
+        # 2. Добавляем участников (покупатель и продавец)
+        cursor.execute('''
+            INSERT INTO transaction_participants (transaction_id, user_id, role)
+            VALUES (%s, %s, 'buyer'), (%s, %s, 'seller')
+        ''', (transaction_id, buyer_id, transaction_id, offer['seller_id']))
+        # ===================================================
         
         conn.commit()
-        return True, f"Куплено {quantity} шт. '{offer['name']}' за {total_cost} монет"
+        return True, f"Приобретено {quantity} шт. '{offer['name']}' за {total_cost} монет"
+        
     except Error as e:
         conn.rollback()
         return False, f"Ошибка: {e}"
@@ -963,48 +986,83 @@ def cancel_market_offer(offer_id, user_id):
         conn.close()
 
 def get_player_transactions(user_id, limit=50):
-    """Получить историю сделок игрока (покупки и продажи)"""
+    """
+    Получить историю сделок пользователя (покупки и продажи).
+    Использует новую схему с таблицей transaction_participants.
+    """
     conn = get_connection()
     if not conn:
         return []
     
     cursor = conn.cursor(dictionary=True)
     cursor.execute('''
-        (SELECT 
-            'purchase' as type,
+        SELECT 
             pt.transaction_date as date,
             pt.quantity,
             pt.price_per_unit,
             pt.total_amount,
             i.name as item_name,
-            u.username as other_party
+            CASE 
+                WHEN tp.role = 'buyer' THEN 'purchase'
+                ELSE 'sale'
+            END as type,
+            (
+                SELECT u.username 
+                FROM transaction_participants tp2
+                JOIN users u ON tp2.user_id = u.id
+                WHERE tp2.transaction_id = pt.id AND tp2.user_id != %s
+                LIMIT 1
+            ) as other_party
         FROM player_transactions pt
+        JOIN transaction_participants tp ON tp.transaction_id = pt.id
         JOIN items i ON pt.item_id = i.id
-        JOIN users u ON pt.seller_id = u.id
-        WHERE pt.buyer_id = %s)
-        
-        UNION ALL
-        
-        (SELECT 
-            'sale' as type,
-            pt.transaction_date as date,
-            pt.quantity,
-            pt.price_per_unit,
-            pt.total_amount,
-            i.name as item_name,
-            u.username as other_party
-        FROM player_transactions pt
-        JOIN items i ON pt.item_id = i.id
-        JOIN users u ON pt.buyer_id = u.id
-        WHERE pt.seller_id = %s)
-        
-        ORDER BY date DESC
+        WHERE tp.user_id = %s
+        ORDER BY pt.transaction_date DESC
         LIMIT %s
     ''', (user_id, user_id, limit))
+    
     transactions = cursor.fetchall()
     cursor.close()
     conn.close()
     return transactions
+
+def get_transaction_details(transaction_id):
+    """
+    Получить полную информацию о сделке по её ID.
+    Возвращает словарь с данными сделки и информацией об участниках.
+    """
+    conn = get_connection()
+    if not conn:
+        return None
+    
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute('''
+        SELECT 
+            pt.id,
+            pt.offer_id,
+            pt.item_id,
+            i.name as item_name,
+            pt.quantity,
+            pt.price_per_unit,
+            pt.total_amount,
+            pt.transaction_date,
+            MAX(CASE WHEN tp.role = 'buyer' THEN tp.user_id END) as buyer_id,
+            MAX(CASE WHEN tp.role = 'buyer' THEN u_buyer.username END) as buyer_name,
+            MAX(CASE WHEN tp.role = 'seller' THEN tp.user_id END) as seller_id,
+            MAX(CASE WHEN tp.role = 'seller' THEN u_seller.username END) as seller_name
+        FROM player_transactions pt
+        JOIN items i ON pt.item_id = i.id
+        JOIN transaction_participants tp ON tp.transaction_id = pt.id
+        LEFT JOIN users u_buyer ON (tp.user_id = u_buyer.id AND tp.role = 'buyer')
+        LEFT JOIN users u_seller ON (tp.user_id = u_seller.id AND tp.role = 'seller')
+        WHERE pt.id = %s
+        GROUP BY pt.id
+    ''', (transaction_id,))
+    
+    transaction = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return transaction
 
 def get_item_price_history(item_id, days=30):
     """Получить историю цен на предмет (для графика)"""
@@ -1882,6 +1940,651 @@ def get_game_stats(user_id):
     
     return stats or {}
 
+
+def advanced_search(filters):
+    """
+    Расширенный поиск предметов по параметрам
+    filters: словарь с параметрами поиска
+    """
+    conn = get_connection()
+    if not conn:
+        return []
+    
+    cursor = conn.cursor(dictionary=True)
+    query = "SELECT * FROM items WHERE 1=1"
+    params = []
+    
+    # Поиск по названию (частичное совпадение)
+    if filters.get('name'):
+        query += " AND name LIKE %s"
+        params.append(f"%{filters['name']}%")
+    
+    # Фильтр по категории
+    if filters.get('category'):
+        query += " AND category = %s"
+        params.append(filters['category'])
+    
+    # Фильтр по редкости
+    if filters.get('rarity'):
+        query += " AND rarity = %s"
+        params.append(filters['rarity'])
+    
+    # Фильтр по слоту
+    if filters.get('slot'):
+        query += " AND slot = %s"
+        params.append(filters['slot'])
+    
+    # Диапазон цены
+    if filters.get('price_min'):
+        query += " AND price >= %s"
+        params.append(filters['price_min'])
+    if filters.get('price_max'):
+        query += " AND price <= %s"
+        params.append(filters['price_max'])
+    
+    # Диапазон уровня
+    if filters.get('level_min'):
+        query += " AND level_required >= %s"
+        params.append(filters['level_min'])
+    if filters.get('level_max'):
+        query += " AND level_required <= %s"
+        params.append(filters['level_max'])
+    
+    # Фильтр по наличию
+    if filters.get('stock_filter') == 'in_stock':
+        query += " AND stock > 0"
+    elif filters.get('stock_filter') == 'out_stock':
+        query += " AND stock = 0"
+    
+    # Сортировка
+    sort_by = filters.get('sort_by', 'name')
+    order = filters.get('order', 'ASC')
+    if sort_by in ['name', 'price', 'level_required']:
+        query += f" ORDER BY {sort_by} {order}"
+    
+    cursor.execute(query, params)
+    items = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return items
+
+def update_item_full(item_id, name, description, price, category, rarity, level_required, slot, durability, bonus_stats, stock, image_url):
+    """Полное обновление предмета (админ)"""
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения"
+    
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''
+            UPDATE items 
+            SET name = %s, description = %s, price = %s, category = %s, 
+                rarity = %s, level_required = %s, slot = %s, durability = %s, 
+                bonus_stats = %s, stock = %s, image_url = %s
+            WHERE id = %s
+        ''', (name, description, price, category, rarity, level_required, 
+              slot, durability, bonus_stats, stock, image_url, item_id))
+        conn.commit()
+        return True, "Предмет обновлён"
+    except Error as e:
+        return False, f"Ошибка: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+
+def add_item_full(name, description, price, category, rarity, level_required, slot, durability, bonus_stats, stock, image_url):
+    """Добавить новый предмет (админ)"""
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения"
+    
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''
+            INSERT INTO items (name, description, price, category, rarity, level_required, slot, durability, bonus_stats, stock, image_url)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ''', (name, description, price, category, rarity, level_required, slot, durability, bonus_stats, stock, image_url))
+        conn.commit()
+        return True, "Предмет добавлен"
+    except Error as e:
+        return False, f"Ошибка: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+
+def add_item_full(name, description, price, category, rarity, level_required, slot, durability, bonus_stats, stock, image_url):
+    """Добавить новый предмет со всеми параметрами (админ)"""
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения"
+    
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''
+            INSERT INTO items (name, description, price, category, rarity, level_required, slot, durability, bonus_stats, stock, image_url)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ''', (name, description, price, category, rarity, level_required, slot, durability, bonus_stats, stock, image_url))
+        conn.commit()
+        return True, "Предмет добавлен"
+    except Error as e:
+        return False, f"Ошибка: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+        
+import random
+from datetime import datetime, timedelta
+import bcrypt
+
+def generate_test_data():
+    """Генерация тестовых данных: пользователи, транзакции, рыночные предложения"""
+    conn = get_connection()
+    if not conn:
+        print("Ошибка подключения к БД")
+        return
+    
+    cursor = conn.cursor(dictionary=True)
+    
+    # ============ 1. Генерация пользователей ============
+    print("Генерация пользователей...")
+    
+    # Проверяем, сколько уже есть пользователей
+    cursor.execute("SELECT COUNT(*) as count FROM users")
+    existing_users = cursor.fetchone()['count']
+    
+    if existing_users < 10:  # Если меньше 10 пользователей, добавляем
+        users_to_add = 15 - existing_users
+        usernames = [
+            "WarriorKing", "MageMaster", "ElfArcher", "DarkKnight", "HealerPriest",
+            "DragonSlayer", "ShadowRogue", "BeastTamer", "IceWizard", "FireMage",
+            "ThunderBolt", "EarthShaker", "WindWalker", "MoonHunter", "StarSeeker"
+        ]
+        
+        for i in range(min(users_to_add, len(usernames))):
+            username = usernames[i]
+            password_hash = bcrypt.hashpw("test123".encode(), bcrypt.gensalt())
+            role = random.choice(['user', 'user', 'user', 'user', 'moderator'])  # 80% user, 20% moderator
+            balance = random.randint(500, 5000)
+            
+            try:
+                cursor.execute('''
+                    INSERT INTO users (username, password_hash, role, balance, created_at)
+                    VALUES (%s, %s, %s, %s, %s)
+                ''', (username, password_hash.decode(), role, balance, 
+                      datetime.now() - timedelta(days=random.randint(1, 90))))
+                print(f"  Добавлен пользователь: {username} (баланс: {balance})")
+            except:
+                pass
+        
+        conn.commit()
+        print(f"  Добавлено {users_to_add} пользователей")
+    else:
+        print(f"  Пользователей уже достаточно: {existing_users}")
+    
+    # ============ 2. Получаем списки ID для связей ============
+    cursor.execute("SELECT id, username, balance FROM users WHERE role != 'admin'")
+    users = cursor.fetchall()
+    
+    cursor.execute("SELECT id, name, price, category FROM items")
+    items = cursor.fetchall()
+    
+    if not users or not items:
+        print("Нет пользователей или предметов для генерации данных")
+        cursor.close()
+        conn.close()
+        return
+    
+    # ============ 3. Генерация транзакций покупок в магазине ============
+    print("Генерация истории покупок в магазине...")
+    
+    cursor.execute("SELECT COUNT(*) as count FROM transactions WHERE transaction_type = 'purchase'")
+    existing_transactions = cursor.fetchone()['count']
+    
+    if existing_transactions < 50:
+        transactions_to_add = 100 - existing_transactions
+        added = 0
+        
+        for _ in range(transactions_to_add):
+            user = random.choice(users)
+            item = random.choice(items)
+            quantity = random.randint(1, 3)
+            total_price = item['price'] * quantity
+            
+            # Проверяем, хватит ли баланса у пользователя
+            if user['balance'] >= total_price:
+                date = datetime.now() - timedelta(days=random.randint(0, 60))
+                
+                try:
+                    cursor.execute('''
+                        INSERT INTO transactions (user_id, item_id, transaction_type, quantity, price_per_unit, total_amount, transaction_date)
+                        VALUES (%s, %s, 'purchase', %s, %s, %s, %s)
+                    ''', (user['id'], item['id'], quantity, item['price'], total_price, date))
+                    
+                    # Обновляем баланс пользователя
+                    cursor.execute("UPDATE users SET balance = balance - %s WHERE id = %s", (total_price, user['id']))
+                    added += 1
+                except:
+                    pass
+        
+        conn.commit()
+        print(f"  Добавлено {added} транзакций покупок")
+    else:
+        print(f"  Транзакций уже достаточно: {existing_transactions}")
+    
+    # ============ 4. Генерация рыночных предложений ============
+    print("Генерация рыночных предложений...")
+    
+    # Получаем обновлённые балансы пользователей
+    cursor.execute("SELECT id, username, balance FROM users WHERE role != 'admin'")
+    users = cursor.fetchall()
+    
+    cursor.execute("SELECT COUNT(*) as count FROM market_offers WHERE status = 'active'")
+    existing_offers = cursor.fetchone()['count']
+    
+    if existing_offers < 50:
+        offers_to_add = 30 - existing_offers
+        added = 0
+        
+        for _ in range(offers_to_add):
+            seller = random.choice(users)
+            item = random.choice(items)
+            
+            # У продавца должен быть предмет в инвентаре
+            cursor.execute("SELECT quantity FROM inventory WHERE user_id = %s AND item_id = %s", (seller['id'], item['id']))
+            inv = cursor.fetchone()
+            
+            if inv and inv['quantity'] > 0:
+                quantity = random.randint(1, min(inv['quantity'], 5))
+                price_per_unit = item['price'] + random.randint(-100, 200)  # Цена может быть ниже или выше магазинной
+                price_per_unit = max(10, price_per_unit)  # Не меньше 10 монет
+                
+                try:
+                    # Уменьшаем инвентарь продавца
+                    if inv['quantity'] == quantity:
+                        cursor.execute("DELETE FROM inventory WHERE user_id = %s AND item_id = %s", (seller['id'], item['id']))
+                    else:
+                        cursor.execute("UPDATE inventory SET quantity = quantity - %s WHERE user_id = %s AND item_id = %s", 
+                                     (quantity, seller['id'], item['id']))
+                    
+                    # Создаём предложение
+                    cursor.execute('''
+                        INSERT INTO market_offers (seller_id, item_id, quantity, price_per_unit, status, created_at)
+                        VALUES (%s, %s, %s, %s, 'active', %s)
+                    ''', (seller['id'], item['id'], quantity, price_per_unit, 
+                          datetime.now() - timedelta(days=random.randint(0, 14))))
+                    added += 1
+                except:
+                    pass
+        
+        conn.commit()
+        print(f"  Добавлено {added} активных предложений на рынке")
+    else:
+        print(f"  Активных предложений уже достаточно: {existing_offers}")
+    
+    # ============ 5. Генерация завершённых сделок на рынке ============
+    print("Генерация истории сделок на рынке...")
+    
+    cursor.execute("SELECT COUNT(*) as count FROM player_transactions")
+    existing_player_tx = cursor.fetchone()['count']
+    
+    if existing_player_tx < 50:
+        tx_to_add = 60 - existing_player_tx
+        added = 0
+        
+        for _ in range(tx_to_add):
+            buyer = random.choice(users)
+            seller = random.choice(users)
+            
+            # Покупатель и продавец не должны совпадать
+            if buyer['id'] == seller['id']:
+                continue
+            
+            item = random.choice(items)
+            quantity = random.randint(1, 2)
+            price_per_unit = item['price'] + random.randint(-50, 150)
+            price_per_unit = max(10, price_per_unit)
+            total_amount = price_per_unit * quantity
+            
+            # Проверяем баланс покупателя
+            if buyer['balance'] >= total_amount:
+                date = datetime.now() - timedelta(days=random.randint(0, 45))
+                
+                try:
+                    # Создаём запись о предложении (как завершённое)
+                    cursor.execute('''
+                        INSERT INTO market_offers (seller_id, item_id, quantity, price_per_unit, status, created_at, sold_at)
+                        VALUES (%s, %s, %s, %s, 'sold', %s, %s)
+                    ''', (seller['id'], item['id'], quantity, price_per_unit, 
+                          date - timedelta(hours=random.randint(1, 48)), date))
+                    
+                    offer_id = cursor.lastrowid
+                    
+                    # Записываем сделку
+                    cursor.execute('''
+                        INSERT INTO player_transactions (offer_id, buyer_id, seller_id, item_id, quantity, price_per_unit, total_amount, transaction_date)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ''', (offer_id, buyer['id'], seller['id'], item['id'], quantity, price_per_unit, total_amount, date))
+                    
+                    # Обновляем балансы
+                    cursor.execute("UPDATE users SET balance = balance - %s WHERE id = %s", (total_amount, buyer['id']))
+                    cursor.execute("UPDATE users SET balance = balance + %s WHERE id = %s", (total_amount, seller['id']))
+                    
+                    # Добавляем предмет покупателю
+                    cursor.execute('''
+                        INSERT INTO inventory (user_id, item_id, quantity, purchased_at)
+                        VALUES (%s, %s, %s, %s)
+                        ON DUPLICATE KEY UPDATE quantity = quantity + %s
+                    ''', (buyer['id'], item['id'], quantity, date, quantity))
+                    
+                    added += 1
+                except:
+                    pass
+        
+        conn.commit()
+        print(f"  Добавлено {added} завершённых сделок на рынке")
+    else:
+        print(f"  Сделок на рынке уже достаточно: {existing_player_tx}")
+    
+    # ============ 6. Генерация игровых событий для статистики ============
+    print("Генерация игровых событий...")
+    
+    cursor.execute("SELECT COUNT(*) as count FROM game_stats")
+    existing_stats = cursor.fetchone()['count']
+    
+    if existing_stats < 50:
+        stats_to_add = 100 - existing_stats
+        added = 0
+        
+        actions = ['wheel', 'hunt', 'chest']
+        results = ['win', 'lose']
+        reward_types = ['coins', 'item', 'nothing']
+        
+        for _ in range(stats_to_add):
+            user = random.choice(users)
+            action = random.choice(actions)
+            
+            if action == 'wheel':
+                result = 'win' if random.random() > 0.3 else 'lose'
+                reward_type = random.choice(['coins', 'item', 'nothing'])
+                reward_value = random.choice([10, 50, 100, 200, 500]) if reward_type == 'coins' else random.choice([1, 2, 3, 4, 5, 6])
+            elif action == 'hunt':
+                result = random.choice(results)
+                reward_type = 'coins'
+                reward_value = random.choice([100, 200]) if result == 'win' else random.choice([-100, -200])
+            else:  # chest
+                result = 'win'
+                reward_type = random.choice(['coins', 'item', 'nothing'])
+                reward_value = random.choice([50, 100, 150, 200, 300]) if reward_type == 'coins' else random.choice([1, 2, 3, 4])
+            
+            date = datetime.now() - timedelta(days=random.randint(0, 30))
+            
+            try:
+                cursor.execute('''
+                    INSERT INTO game_stats (user_id, action_type, result, reward_type, reward_value, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                ''', (user['id'], action, result, reward_type, reward_value, date))
+                added += 1
+            except:
+                pass
+        
+        conn.commit()
+        print(f"  Добавлено {added} игровых событий")
+    else:
+        print(f"  Игровых событий уже достаточно: {existing_stats}")
+    
+    # ============ 7. Вывод итоговой статистики ============
+    print("\n" + "="*50)
+    print("ИТОГОВАЯ СТАТИСТИКА БАЗЫ ДАННЫХ:")
+    print("="*50)
+    
+    cursor.execute("SELECT COUNT(*) as count FROM users")
+    print(f"👥 Пользователей: {cursor.fetchone()['count']}")
+    
+    cursor.execute("SELECT COUNT(*) as count FROM items")
+    print(f"📦 Предметов в магазине: {cursor.fetchone()['count']}")
+    
+    cursor.execute("SELECT COUNT(*) as count FROM transactions")
+    print(f"💳 Транзакций в магазине: {cursor.fetchone()['count']}")
+    
+    cursor.execute("SELECT COUNT(*) as count FROM market_offers WHERE status = 'active'")
+    print(f"🏪 Активных предложений на рынке: {cursor.fetchone()['count']}")
+    
+    cursor.execute("SELECT COUNT(*) as count FROM player_transactions")
+    print(f"🤝 Завершённых сделок на рынке: {cursor.fetchone()['count']}")
+    
+    cursor.execute("SELECT COUNT(*) as count FROM game_stats")
+    print(f"🎮 Игровых событий: {cursor.fetchone()['count']}")
+    
+    cursor.execute("SELECT SUM(quantity) as total FROM inventory")
+    total_items = cursor.fetchone()['total'] or 0
+    print(f"🎒 Всего предметов в инвентарях: {total_items}")
+    
+    cursor.execute("SELECT SUM(balance) as total FROM users WHERE role != 'admin'")
+    total_balance = cursor.fetchone()['total'] or 0
+    print(f"💰 Общий баланс игроков: {total_balance} монет")
+    
+    print("="*50)
+    
+    cursor.close()
+    conn.close()
+    print("\nГенерация тестовых данных завершена!")
+
+
+import json
+import csv
+import bcrypt
+from datetime import datetime
+
+# ============================================================
+# ФУНКЦИИ ИМПОРТА ДАННЫХ ИЗ ВНЕШНИХ ИСТОЧНИКОВ
+# ============================================================
+
+def import_items_from_json(file_path):
+    """
+    Импорт предметов из JSON-файла.
+    Формат JSON:
+    [
+        {
+            "name": "Название",
+            "description": "Описание",
+            "price": 100,
+            "category": "weapon",
+            "rarity": "common",
+            "level_required": 1,
+            "slot": "weapon",
+            "durability": 100,
+            "bonus_stats": "{\"strength\": 5}",
+            "stock": 10,
+            "image_url": "/static/images/item.png"
+        },
+        ...
+    ]
+    """
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения к БД"
+    
+    cursor = conn.cursor()
+    added = 0
+    errors = []
+    
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            items = json.load(f)
+        
+        for item in items:
+            try:
+                cursor.execute('''
+                    INSERT INTO items 
+                    (name, description, price, category, rarity, level_required, 
+                     slot, durability, bonus_stats, stock, image_url)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ''', (
+                    item.get('name', ''),
+                    item.get('description', ''),
+                    item.get('price', 0),
+                    item.get('category', 'other'),
+                    item.get('rarity', 'common'),
+                    item.get('level_required', 1),
+                    item.get('slot', 'other'),
+                    item.get('durability', 100),
+                    item.get('bonus_stats', '{}'),
+                    item.get('stock', 0),
+                    item.get('image_url', '')
+                ))
+                added += 1
+            except Exception as e:
+                errors.append(f"Ошибка при импорте '{item.get('name', 'unknown')}': {str(e)}")
+        
+        conn.commit()
+        
+        msg = f"Импортировано предметов: {added}"
+        if errors:
+            msg += f"\nОшибки: {len(errors)}"
+        
+        return True, msg, errors
+        
+    except FileNotFoundError:
+        return False, f"Файл не найден: {file_path}"
+    except json.JSONDecodeError as e:
+        return False, f"Ошибка парсинга JSON: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def import_users_from_csv(file_path):
+    """
+    Импорт пользователей из CSV-файла.
+    Формат CSV (с заголовками):
+    username,password,role,balance
+    test_user,123456,user,1000
+    """
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения к БД"
+    
+    cursor = conn.cursor()
+    added = 0
+    errors = []
+    
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            
+            for row in reader:
+                try:
+                    username = row.get('username', '').strip()
+                    password = row.get('password', '')
+                    role = row.get('role', 'user')
+                    balance = int(row.get('balance', 1000))
+                    
+                    if not username:
+                        errors.append("Пропущена запись: отсутствует username")
+                        continue
+                    
+                    # Проверяем, существует ли пользователь
+                    cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
+                    if cursor.fetchone():
+                        errors.append(f"Пользователь '{username}' уже существует, пропущен")
+                        continue
+                    
+                    # Хешируем пароль
+                    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+                    
+                    cursor.execute('''
+                        INSERT INTO users (username, password_hash, role, balance)
+                        VALUES (%s, %s, %s, %s)
+                    ''', (username, hashed.decode(), role, balance))
+                    added += 1
+                    
+                except ValueError as e:
+                    errors.append(f"Ошибка преобразования данных: {e}")
+                except Exception as e:
+                    errors.append(f"Ошибка при импорте '{row.get('username', 'unknown')}': {str(e)}")
+        
+        conn.commit()
+        
+        msg = f"Импортировано пользователей: {added}"
+        if errors:
+            msg += f"\nОшибки: {len(errors)}"
+        
+        return True, msg, errors
+        
+    except FileNotFoundError:
+        return False, f"Файл не найден: {file_path}"
+    except Exception as e:
+        return False, f"Ошибка при импорте: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def export_items_to_json(file_path):
+    """
+    Экспорт всех предметов в JSON-файл.
+    """
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения к БД"
+    
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        cursor.execute("SELECT * FROM items ORDER BY id")
+        items = cursor.fetchall()
+        
+        # Преобразуем datetime в строку
+        for item in items:
+            if isinstance(item.get('created_at'), datetime):
+                item['created_at'] = item['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(items, f, ensure_ascii=False, indent=4)
+        
+        return True, f"Экспортировано {len(items)} предметов в {file_path}"
+        
+    except Exception as e:
+        return False, f"Ошибка при экспорте: {e}"
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def export_users_to_csv(file_path):
+    """
+    Экспорт пользователей в CSV-файл (без паролей, только логин, роль, баланс).
+    """
+    conn = get_connection()
+    if not conn:
+        return False, "Ошибка подключения к БД"
+    
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        cursor.execute("SELECT id, username, role, balance, created_at FROM users ORDER BY id")
+        users = cursor.fetchall()
+        
+        with open(file_path, 'w', encoding='utf-8', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['id', 'username', 'role', 'balance', 'created_at'])
+            
+            for user in users:
+                writer.writerow([
+                    user['id'],
+                    user['username'],
+                    user['role'],
+                    user['balance'],
+                    user['created_at'].strftime('%Y-%m-%d %H:%M:%S') if user['created_at'] else ''
+                ])
+        
+        return True, f"Экспортировано {len(users)} пользователей в {file_path}"
+        
+    except Exception as e:
+        return False, f"Ошибка при экспорте: {e}"
+    finally:
+        cursor.close()
+        conn.close()
 # ============ ЗАПУСК СОЗДАНИЯ ТАБЛИЦ ============
 
 if __name__ == "__main__":
@@ -1889,6 +2592,7 @@ if __name__ == "__main__":
     add_test_items()
     add_test_user()
     add_test_transactions()
+    generate_test_data()
     print("\n=== Готово! ===")
     print("Тестовый пользователь: test_player / test123")
     print("Баланс: 2000 монет")

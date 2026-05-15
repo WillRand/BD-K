@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 import bcrypt
+import json
 from db import (
     get_connection, get_all_items, get_item_by_id, purchase_item,
     get_user_inventory, get_user_balance, add_item, update_item_stock,
@@ -16,8 +17,14 @@ from db import (
     is_moderator_or_admin, get_all_users_for_moderator, get_user_inventory_readonly,
     get_popular_items, get_category_stats, get_sales_dynamics, 
     get_market_price_history_advanced, get_total_stats,
-    spin_wheel, hunt_monster, open_chest, get_game_stats
+    spin_wheel, hunt_monster, open_chest, get_game_stats,
+    advanced_search, add_item_full, add_item_full,
+    import_items_from_json, import_users_from_csv,
+    export_items_to_json, export_users_to_csv
 )
+import os
+if not os.path.exists('temp'):
+    os.makedirs('temp')
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-12345'  # В реальном проекте смените!
@@ -200,10 +207,15 @@ def admin_add_item():
     description = request.form['description']
     price = int(request.form['price'])
     category = request.form['category']
+    rarity = request.form.get('rarity', 'common')
+    level_required = int(request.form.get('level_required', 1))
+    slot = request.form.get('slot', 'other')
+    durability = int(request.form.get('durability', 100))
+    bonus_stats = request.form.get('bonus_stats', '')
     stock = int(request.form['stock'])
     image_url = request.form.get('image_url', '')
     
-    success, message = add_item(name, description, price, category, stock, image_url)
+    success, message = add_item_full(name, description, price, category, rarity, level_required, slot, durability, bonus_stats, stock, image_url)
     flash(message, 'success' if success else 'danger')
     
     return redirect(url_for('admin_panel'))
@@ -447,10 +459,15 @@ def admin_edit_item(item_id):
         description = request.form['description']
         price = int(request.form['price'])
         category = request.form['category']
-        stock = int(request.form['stock'])
+        rarity = request.form.get('rarity', 'common')
+        level_required = int(request.form.get('level_required', 1))
+        slot = request.form.get('slot', 'other')
+        durability = int(request.form.get('durability', 100))
+        bonus_stats = request.form.get('bonus_stats', '')
+        stock = int(request.form.get('stock', 0))
         image_url = request.form.get('image_url', '')
         
-        success, message = update_item_full(item_id, name, description, price, category, stock, image_url)
+        success, message = update_item_full(item_id, name, description, price, category, rarity, level_required, slot, durability, bonus_stats, stock, image_url)
         flash(message, 'success' if success else 'danger')
         return redirect(url_for('admin_panel'))
     
@@ -708,8 +725,192 @@ def game_open_chest():
         flash(message, 'danger')
     
     return redirect(url_for('game'))
+
+@app.route('/search')
+def advanced_search_page():
+    """Страница расширенного поиска"""
+    # Получаем параметры из URL
+    filters = {
+        'name': request.args.get('name', ''),
+        'category': request.args.get('category', ''),
+        'rarity': request.args.get('rarity', ''),
+        'slot': request.args.get('slot', ''),
+        'price_min': request.args.get('price_min', '', type=int),
+        'price_max': request.args.get('price_max', '', type=int),
+        'level_min': request.args.get('level_min', '', type=int),
+        'level_max': request.args.get('level_max', '', type=int),
+        'stock_filter': request.args.get('stock_filter', ''),
+        'sort_by': request.args.get('sort_by', 'name'),
+        'order': request.args.get('order', 'ASC')
+    }
     
+    items = advanced_search(filters)
+    
+    # Списки для выпадающих меню
+    categories = ['weapon', 'armor', 'potion', 'cosmetic']
+    rarities = ['common', 'rare', 'epic', 'legendary']
+    slots = ['weapon', 'head', 'body', 'accessory', 'other']
+    
+    return render_template('advanced_search.html', 
+                         items=items, 
+                         filters=filters,
+                         categories=categories,
+                         rarities=rarities,
+                         slots=slots)
+
+
+
+@app.template_filter('from_json')
+def from_json_filter(value):
+    try:
+        return json.loads(value) if value else {}
+    except:
+        return {}
 # ===============================================================================
+
+# ============================================================
+# ИМПОРТ/ЭКСПОРТ ДАННЫХ (только для администратора)
+# ============================================================
+
+@app.route('/admin/import')
+@login_required
+def admin_import_page():
+    """Страница импорта/экспорта данных"""
+    if current_user.role != 'admin':
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    return render_template('admin_import.html')
+
+
+@app.route('/admin/import/items', methods=['POST'])
+@login_required
+def admin_import_items():
+    """Импорт предметов из JSON-файла"""
+    if current_user.role != 'admin':
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    if 'file' not in request.files:
+        flash('Файл не выбран', 'danger')
+        return redirect(url_for('admin_import_page'))
+    
+    file = request.files['file']
+    if file.filename == '':
+        flash('Файл не выбран', 'danger')
+        return redirect(url_for('admin_import_page'))
+    
+    if not file.filename.endswith('.json'):
+        flash('Неверный формат файла. Ожидается JSON', 'danger')
+        return redirect(url_for('admin_import_page'))
+    
+    # Сохраняем временный файл
+    import os
+    temp_path = os.path.join('temp', file.filename)
+    os.makedirs('temp', exist_ok=True)
+    file.save(temp_path)
+    
+    # Импортируем
+    success, message, errors = import_items_from_json(temp_path)
+    
+    # Удаляем временный файл
+    os.remove(temp_path)
+    
+    if success:
+        flash(message, 'success')
+        if errors:
+            for err in errors[:5]:  # Показываем первые 5 ошибок
+                flash(err, 'warning')
+    else:
+        flash(message, 'danger')
+    
+    return redirect(url_for('admin_import_page'))
+
+
+@app.route('/admin/import/users', methods=['POST'])
+@login_required
+def admin_import_users():
+    """Импорт пользователей из CSV-файла"""
+    if current_user.role != 'admin':
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    if 'file' not in request.files:
+        flash('Файл не выбран', 'danger')
+        return redirect(url_for('admin_import_page'))
+    
+    file = request.files['file']
+    if file.filename == '':
+        flash('Файл не выбран', 'danger')
+        return redirect(url_for('admin_import_page'))
+    
+    if not file.filename.endswith('.csv'):
+        flash('Неверный формат файла. Ожидается CSV', 'danger')
+        return redirect(url_for('admin_import_page'))
+    
+    # Сохраняем временный файл
+    import os
+    temp_path = os.path.join('temp', file.filename)
+    os.makedirs('temp', exist_ok=True)
+    file.save(temp_path)
+    
+    # Импортируем
+    success, message, errors = import_users_from_csv(temp_path)
+    
+    # Удаляем временный файл
+    os.remove(temp_path)
+    
+    if success:
+        flash(message, 'success')
+        if errors:
+            for err in errors[:5]:
+                flash(err, 'warning')
+    else:
+        flash(message, 'danger')
+    
+    return redirect(url_for('admin_import_page'))
+
+
+@app.route('/admin/export/items')
+@login_required
+def admin_export_items():
+    """Экспорт предметов в JSON"""
+    if current_user.role != 'admin':
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    import os
+    from flask import send_file
+    
+    file_path = os.path.join('temp', 'items_export.json')
+    success, message = export_items_to_json(file_path)
+    
+    if success:
+        return send_file(file_path, as_attachment=True, download_name='items_export.json')
+    else:
+        flash(message, 'danger')
+        return redirect(url_for('admin_import_page'))
+
+
+@app.route('/admin/export/users')
+@login_required
+def admin_export_users():
+    """Экспорт пользователей в CSV"""
+    if current_user.role != 'admin':
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('catalog'))
+    
+    import os
+    from flask import send_file
+    
+    file_path = os.path.join('temp', 'users_export.csv')
+    success, message = export_users_to_csv(file_path)
+    
+    if success:
+        return send_file(file_path, as_attachment=True, download_name='users_export.csv')
+    else:
+        flash(message, 'danger')
+        return redirect(url_for('admin_import_page'))
 
 if __name__ == '__main__':
     app.run(debug=True)
